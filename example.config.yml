@@ -1,0 +1,105 @@
+node:
+  host: 10.0.28.28
+
+cache:
+  ttl: 5s
+
+lcd:
+  rules:
+    - priority: 9999
+      action: deny
+      paths: []
+      methods: []
+
+    - priority: 1000
+      action: allow
+      paths:
+        - /cosmos/staking/v1beta1/params
+      methods:
+        - GET
+      cache:
+        enable: true
+        ttl: 20s
+
+    - priority: 1000
+      action: allow
+      paths:
+        - /cosmos/staking/v1beta1/validators
+        - /cosmos/staking/v1beta1/pool
+        - /cosmos/distribution/v1beta1/community_pool
+        - /cosmos/base/tendermint/v1beta1/node_info
+        - /cosmos/bank/v1beta1/supply/by_denom
+        - /cosmos/mint/v1beta1/inflation
+        - /cosmos/bank/v1beta1/supply/*
+        - /cosmos/base/tendermint/v1beta1/validatorsets/*
+#        - /cosmos/base/tendermint/v1beta1/blocks/*
+      methods:
+        - GET
+      cache:
+        enable: true
+
+grpc:
+  rules:
+    - action: allow
+      methods:
+        - /cosmos.bank.v1beta1.Query/AllBalances
+
+rpc:
+  rules:
+    - priority: 9999
+      action: deny
+      path: []
+      methods: []
+
+    - action: allow
+      paths:
+        - /cosmos/tx/v1beta1/txs
+      methods:
+        - GET
+        - POST
+
+    - priority: 1000
+      action: allow
+      paths:
+        - /cosmos/distribution/v1beta1/delegators/*/validators
+      methods:
+        - GET
+
+    # Allow JSONRPC
+    - priority: 1000
+      action: allow
+      paths:
+        - /
+      methods:
+        - POST
+
+    # Deny Websocket
+    - priority: 900
+      action: deny
+      paths:
+        - /websocket
+      methods: [ ]
+
+  jsonrpc:
+    rules:
+      - priority: 9999
+        action: deny
+        methods: []
+
+      - priority:
+        action: allow
+        methods: ["abci_query"]
+        params:
+          path: /cosmos.bank.v1beta1.Query/AllBalances
+
+      - priority:
+        action: allow
+        methods: ["abci_query"]
+        params:
+          path: /nibiru.epochs.v1.Query/EpochInfos
+
+      - priority:
+        action: allow
+        methods: ["abci_query"]
+        params:
+          path: /cosmos.distribution.v1beta1.Query/DelegationTotalRewards
