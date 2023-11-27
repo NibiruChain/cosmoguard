@@ -13,13 +13,28 @@ import (
 	"github.com/NibiruChain/cosmos-firewall/pkg/util"
 )
 
+type EndpointHandler interface {
+	ServeHTTP(w http.ResponseWriter, r *http.Request, next func(w http.ResponseWriter, r *http.Request))
+}
+
+type httpProxyEndpointHandler struct {
+	Endpoints []Endpoint
+	Handler   EndpointHandler
+}
+
+type Endpoint struct {
+	Path   string
+	Method string
+}
+
 type HttpProxy struct {
-	defaultAction RuleAction
-	rules         []*HttpRule
-	server        *http.Server
-	proxy         *httputil.ReverseProxy
-	cache         *ttlcache.Cache[string, CachedResponse]
-	mu            sync.RWMutex
+	defaultAction    RuleAction
+	rules            []*HttpRule
+	server           *http.Server
+	proxy            *httputil.ReverseProxy
+	cache            *ttlcache.Cache[string, CachedResponse]
+	endpointHandlers []*httpProxyEndpointHandler
+	mu               sync.RWMutex
 }
 
 type CachedResponse struct {
@@ -27,19 +42,25 @@ type CachedResponse struct {
 	StatusCode int
 }
 
-func NewHttpProxy(localAddr, remoteAddr string, cache *CacheGlobalConfig) (*HttpProxy, error) {
+func NewHttpProxy(localAddr, remoteAddr string, opts ...Option[HttpProxyOptions]) (*HttpProxy, error) {
+	cfg := DefaultHttpProxyOptions()
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	remoteURL, err := url.Parse(remoteAddr)
 	if err != nil {
 		return nil, err
 	}
 	proxy := HttpProxy{
-		server: &http.Server{Addr: localAddr},
-		proxy:  httputil.NewSingleHostReverseProxy(remoteURL),
+		server:           &http.Server{Addr: localAddr},
+		proxy:            httputil.NewSingleHostReverseProxy(remoteURL),
+		endpointHandlers: cfg.EndpointHandlers,
 	}
 	proxy.server.Handler = &proxy
-	if cache != nil {
-		cacheOptions := []ttlcache.Option[string, CachedResponse]{ttlcache.WithTTL[string, CachedResponse](cache.TTL)}
-		if cache.DisableTouchOnHit {
+	if cfg.CacheConfig != nil {
+		cacheOptions := []ttlcache.Option[string, CachedResponse]{ttlcache.WithTTL[string, CachedResponse](cfg.CacheConfig.TTL)}
+		if cfg.CacheConfig.DisableTouchOnHit {
 			cacheOptions = append(cacheOptions, ttlcache.WithDisableTouchOnHit[string, CachedResponse]())
 		}
 		proxy.cache = ttlcache.New[string, CachedResponse](cacheOptions...)
@@ -48,7 +69,7 @@ func NewHttpProxy(localAddr, remoteAddr string, cache *CacheGlobalConfig) (*Http
 }
 
 func (p *HttpProxy) Start() error {
-	log.Infof("starting proxy at %v", p.server.Addr)
+	log.Infof("starting http proxy at %v", p.server.Addr)
 	go p.cache.Start()
 	return p.server.ListenAndServe()
 }
@@ -61,7 +82,16 @@ func (p *HttpProxy) SetRules(rules []*HttpRule, defaultAction RuleAction) {
 }
 
 func (p *HttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r.Body = io.NopCloser(ReusableReader(r.Body))
+	for _, handler := range p.endpointHandlers {
+		for _, e := range handler.Endpoints {
+			if e.Method == r.Method && e.Path == r.URL.Path {
+				handler.Handler.ServeHTTP(w, r, p.proxy.ServeHTTP)
+				return
+			}
+		}
+	}
+	r.Body = ReusableReader(r.Body)
+
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	for _, rule := range p.rules {

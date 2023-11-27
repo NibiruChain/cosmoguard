@@ -8,8 +8,8 @@ lcd:
   rules:
     - priority: 9999
       action: deny
-      paths: []
-      methods: []
+      paths: [ ]
+      methods: [ ]
 
     - priority: 1000
       action: allow
@@ -32,7 +32,7 @@ lcd:
         - /cosmos/mint/v1beta1/inflation
         - /cosmos/bank/v1beta1/supply/*
         - /cosmos/base/tendermint/v1beta1/validatorsets/*
-#        - /cosmos/base/tendermint/v1beta1/blocks/*
+        - /cosmos/base/tendermint/v1beta1/blocks/*
       methods:
         - GET
       cache:
@@ -48,58 +48,47 @@ rpc:
   rules:
     - priority: 9999
       action: deny
-      path: []
-      methods: []
+      path: [ ]
+      methods: [ ]
 
     - action: allow
       paths:
-        - /cosmos/tx/v1beta1/txs
+        - /status
       methods:
         - GET
-        - POST
-
-    - priority: 1000
-      action: allow
-      paths:
-        - /cosmos/distribution/v1beta1/delegators/*/validators
-      methods:
-        - GET
-
-    # Allow JSONRPC
-    - priority: 1000
-      action: allow
-      paths:
-        - /
-      methods:
-        - POST
-
-    # Deny Websocket
-    - priority: 900
-      action: deny
-      paths:
-        - /websocket
-      methods: [ ]
+      cache:
+        enable: true
+        ttl: 2s
 
   jsonrpc:
     rules:
       - priority: 9999
         action: deny
-        methods: []
+        methods: [ ]
 
       - priority:
         action: allow
-        methods: ["abci_query"]
+        methods: [ "status" ]
+        cache:
+          enable: true
+
+      - priority:
+        action: allow
+        methods: [ "abci_query" ]
         params:
           path: /cosmos.bank.v1beta1.Query/AllBalances
+        cache:
+          enable: true
+          ttl: 2s
 
       - priority:
         action: allow
-        methods: ["abci_query"]
+        methods: [ "abci_query" ]
         params:
           path: /nibiru.epochs.v1.Query/EpochInfos
 
       - priority:
         action: allow
-        methods: ["abci_query"]
+        methods: [ "abci_query" ]
         params:
           path: /cosmos.distribution.v1beta1.Query/DelegationTotalRewards

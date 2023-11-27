@@ -24,7 +24,12 @@ type GrpcProxy struct {
 	mu            sync.RWMutex
 }
 
-func NewGrpcProxy(localAddr, remoteAddr string) (*GrpcProxy, error) {
+func NewGrpcProxy(localAddr, remoteAddr string, opts ...Option[GrpcProxyOptions]) (*GrpcProxy, error) {
+	cfg := DefaultGrpcProxyOptions()
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	lis, err := net.Listen("tcp", localAddr)
 	if err != nil {
 		return nil, err

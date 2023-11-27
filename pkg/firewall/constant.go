@@ -1,3 +1,0 @@
-package firewall
-
-const ()

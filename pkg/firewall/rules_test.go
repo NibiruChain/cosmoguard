@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/teambition/jsonrpc-go"
 	"gotest.tools/assert"
 )
 
@@ -87,6 +88,173 @@ func TestHttpRule_Match(t *testing.T) {
 				},
 			},
 			ExpectMatch: true,
+		},
+	}
+
+	for _, test := range table {
+		test.Rule.Compile()
+		assert.Equal(t, test.Rule.Match(test.Request), test.ExpectMatch)
+	}
+}
+
+func TestJsonRpcRule_Match(t *testing.T) {
+	table := []struct {
+		Rule        JsonRpcRule
+		ExpectMatch bool
+		Request     *jsonrpc.RPC
+	}{
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{"status"},
+			},
+			Request: &jsonrpc.RPC{
+				ID:      1234,
+				Type:    "request",
+				Version: "2.0",
+				Method:  "status",
+			},
+			ExpectMatch: true,
+		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{},
+			},
+			Request: &jsonrpc.RPC{
+				ID:      1234,
+				Type:    "request",
+				Version: "2.0",
+				Method:  "status",
+			},
+			ExpectMatch: true,
+		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{"status"},
+			},
+			Request: &jsonrpc.RPC{
+				ID:      1234,
+				Type:    "request",
+				Version: "2.0",
+				Method:  "abci_query",
+			},
+			ExpectMatch: false,
+		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{"abci_*"},
+			},
+			Request: &jsonrpc.RPC{
+				ID:      1234,
+				Type:    "request",
+				Version: "2.0",
+				Method:  "abci_query",
+				Params:  make(map[string]interface{}),
+			},
+			ExpectMatch: true,
+		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{"abci_*"},
+				Params: map[string]interface{}{
+					"path": "/cosmos.bank.v1beta1.Query/*",
+				},
+			},
+			Request: &jsonrpc.RPC{
+				ID:      1234,
+				Type:    "request",
+				Version: "2.0",
+				Method:  "abci_query",
+				Params: map[string]interface{}{
+					"path": "/cosmos.bank.v1beta1.Query/AllBalances",
+					"test": 1,
+				},
+			},
+			ExpectMatch: true,
+		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{"abci_*"},
+				Params: map[string]interface{}{
+					"path": "/cosmos.bank.v1beta1.Query/*",
+					"test": 1,
+				},
+			},
+			Request: &jsonrpc.RPC{
+				ID:      1234,
+				Type:    "request",
+				Version: "2.0",
+				Method:  "abci_query",
+				Params: map[string]interface{}{
+					"path": "/cosmos.bank.v1beta1.Query/AllBalances",
+					"test": 1,
+				},
+			},
+			ExpectMatch: true,
+		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{"abci_*"},
+				Params: map[string]interface{}{
+					"path": "/cosmos.bank.v1beta1.Query/*",
+					"test": 1,
+				},
+			},
+			Request: &jsonrpc.RPC{
+				ID:      1234,
+				Type:    "request",
+				Version: "2.0",
+				Method:  "abci_query",
+				Params: map[string]interface{}{
+					"path": "/cosmos.bank.v1beta1.Query/AllBalances",
+					"test": 2,
+				},
+			},
+			ExpectMatch: false,
+		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{},
+				Params: map[string]interface{}{
+					"path": "/cosmos.bank.v1beta1.Query/*",
+				},
+			},
+			Request: &jsonrpc.RPC{
+				ID:      1234,
+				Type:    "request",
+				Version: "2.0",
+				Method:  "abci_query",
+				Params: map[string]interface{}{
+					"path": "/cosmos.bank.v1beta1.Query/AllBalances",
+				},
+			},
+			ExpectMatch: true,
+		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{"abci_*"},
+				Params: map[string]interface{}{
+					"path": "/cosmos.bank.v1beta1.Query/*",
+				},
+			},
+			Request: &jsonrpc.RPC{
+				ID:      1234,
+				Type:    "request",
+				Version: "2.0",
+				Method:  "abci_query",
+				Params: map[string]interface{}{
+					"test": 1,
+				},
+			},
+			ExpectMatch: false,
 		},
 	}
 

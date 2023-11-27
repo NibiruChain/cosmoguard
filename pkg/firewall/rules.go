@@ -54,25 +54,74 @@ func (r *HttpRule) Match(req *http.Request) bool {
 }
 
 type JsonRpcRule struct {
-	Priority int                    `yaml:"priority,omitempty" default:"1000"`
-	Action   RuleAction             `yaml:"action"`
-	Methods  []string               `yaml:"methods,omitempty"`
-	Params   map[string]interface{} `yaml:"params,omitempty"`
-	Cache    *RuleCache             `yaml:"cache,omitempty"`
+	Priority    int                    `yaml:"priority,omitempty" default:"1000"`
+	Action      RuleAction             `yaml:"action"`
+	Methods     []string               `yaml:"methods,omitempty"`
+	Params      map[string]interface{} `yaml:"params,omitempty"`
+	Cache       *RuleCache             `yaml:"cache,omitempty"`
+	MethodGlobs []glob.Glob            `yaml:"-"`
+	ParamsGlobs map[string]glob.Glob   `yaml:"-"`
 }
 
 func (r *JsonRpcRule) String() string {
-	// TODO
-	return fmt.Sprintf("%d - %s - %v", r.Priority, r.Action, r.Methods)
+	return fmt.Sprintf("%d - %s - %v - %v", r.Priority, r.Action, r.Methods, r.Params)
 }
 
 func (r *JsonRpcRule) Compile() {
-	// TODO
+	if len(r.Methods) > 0 {
+		r.MethodGlobs = make([]glob.Glob, len(r.Methods))
+		for i, p := range r.Methods {
+			r.MethodGlobs[i] = glob.MustCompile(p)
+		}
+	}
+	if r.ParamsGlobs == nil {
+		r.ParamsGlobs = make(map[string]glob.Glob)
+	}
+	for key, v := range r.Params {
+		if value, ok := v.(string); ok {
+			r.ParamsGlobs[key] = glob.MustCompile(value, '/')
+		}
+	}
 }
 
-func (r *JsonRpcRule) Match(req *http.Request) bool {
-	// TODO
-	return false
+func (r *JsonRpcRule) Match(req *JsonRpcMsg) bool {
+	if len(r.Params) == 0 {
+		if len(r.Methods) == 0 {
+			return true
+		}
+		for _, g := range r.MethodGlobs {
+			if g.Match(req.Method) {
+				return true
+			}
+		}
+		return false
+	}
+	requestParams, ok := req.Params.(map[string]interface{})
+	if !ok {
+		// These rules only accept maps as params
+		return false
+	}
+
+	for key, v := range r.Params {
+		if g, ok := r.ParamsGlobs[key]; ok {
+			reqV, exists := requestParams[key]
+			if !exists {
+				return false
+			}
+			str, ok := reqV.(string)
+			if !ok {
+				return false
+			}
+			if !g.Match(str) {
+				return false
+			}
+		} else {
+			if v != requestParams[key] {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 type GrpcRule struct {

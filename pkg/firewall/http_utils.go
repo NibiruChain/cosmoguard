@@ -12,9 +12,10 @@ type reusableReader struct {
 	backBuf *bytes.Buffer
 }
 
-func ReusableReader(r io.Reader) io.Reader {
+func ReusableReader(r io.ReadCloser) io.ReadCloser {
 	readBuf := bytes.Buffer{}
-	readBuf.ReadFrom(r) // error handling ignored for brevity
+	readBuf.ReadFrom(r)
+	r.Close()
 	backBuf := bytes.Buffer{}
 
 	return reusableReader{
@@ -22,6 +23,10 @@ func ReusableReader(r io.Reader) io.Reader {
 		&readBuf,
 		&backBuf,
 	}
+}
+
+func (r reusableReader) Close() error {
+	return nil
 }
 
 func (r reusableReader) Read(p []byte) (int, error) {
@@ -33,7 +38,7 @@ func (r reusableReader) Read(p []byte) (int, error) {
 }
 
 func (r reusableReader) reset() {
-	io.Copy(r.readBuf, r.backBuf) // nolint: errcheck
+	io.Copy(r.readBuf, r.backBuf)
 }
 
 type ResponseWriterWrapper struct {
