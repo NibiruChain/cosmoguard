@@ -15,6 +15,7 @@ import (
 
 type EndpointHandler interface {
 	ServeHTTP(w http.ResponseWriter, r *http.Request, next func(w http.ResponseWriter, r *http.Request))
+	Start() error
 }
 
 type httpProxyEndpointHandler struct {
@@ -58,17 +59,27 @@ func NewHttpProxy(localAddr, remoteAddr string, opts ...Option[HttpProxyOptions]
 		endpointHandlers: cfg.EndpointHandlers,
 	}
 	proxy.server.Handler = &proxy
+
+	var cacheOptions []ttlcache.Option[string, CachedResponse]
 	if cfg.CacheConfig != nil {
-		cacheOptions := []ttlcache.Option[string, CachedResponse]{ttlcache.WithTTL[string, CachedResponse](cfg.CacheConfig.TTL)}
+		cacheOptions = append(cacheOptions, ttlcache.WithTTL[string, CachedResponse](cfg.CacheConfig.TTL))
 		if cfg.CacheConfig.DisableTouchOnHit {
 			cacheOptions = append(cacheOptions, ttlcache.WithDisableTouchOnHit[string, CachedResponse]())
 		}
-		proxy.cache = ttlcache.New[string, CachedResponse](cacheOptions...)
+	} else {
+		cacheOptions = append(cacheOptions, ttlcache.WithTTL[string, CachedResponse](defaultCacheTTL))
 	}
+	proxy.cache = ttlcache.New[string, CachedResponse](cacheOptions...)
+
 	return &proxy, nil
 }
 
 func (p *HttpProxy) Start() error {
+	for _, eh := range p.endpointHandlers {
+		if err := eh.Handler.Start(); err != nil {
+			return err
+		}
+	}
 	log.Infof("starting http proxy at %v", p.server.Addr)
 	go p.cache.Start()
 	return p.server.ListenAndServe()

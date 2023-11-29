@@ -46,6 +46,9 @@ func New(path string) (*Firewall, error) {
 
 	jsonRpcHandler, err := NewJsonRpcHandler(
 		WithCacheConfig[JsonRpcHandlerOptions](firewall.cfg.Cache),
+		WithWebSocketEnabled[JsonRpcHandlerOptions](firewall.cfg.RPC.WebSocketEnabled),
+		WithWebSocketBackend[JsonRpcHandlerOptions](fmt.Sprintf("%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.RpcPort)),
+		WithWebSocketConnections[JsonRpcHandlerOptions](firewall.cfg.RPC.WebSocketConnections),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up jsonrpc handler: %v", err)
@@ -78,16 +81,21 @@ func New(path string) (*Firewall, error) {
 func (f *Firewall) Start() error {
 	f.applyRules()
 	go func() {
-		for {
-			if err := f.WatchConfigFile(); err != nil {
-				log.Errorf("error watching config file: %v", err)
-			}
+		if err := f.rpcProxy.Start(); err != nil {
+			log.Errorf("error starting rpc proxy: %v", err)
 		}
 	}()
-	go f.jsonRpcHandler.Start()
-	go f.grpcProxy.Start()
-	go f.rpcProxy.Start()
-	return f.lcdProxy.Start()
+	go func() {
+		if err := f.grpcProxy.Start(); err != nil {
+			log.Errorf("error starting grpc proxy: %v", err)
+		}
+	}()
+	go func() {
+		if err := f.lcdProxy.Start(); err != nil {
+			log.Errorf("error starting lcd proxy: %v", err)
+		}
+	}()
+	return f.WatchConfigFile()
 }
 
 func (f *Firewall) WatchConfigFile() error {

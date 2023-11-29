@@ -2,16 +2,34 @@ package firewall
 
 import (
 	"bytes"
+	"hash/maphash"
 	"net/http"
+	"strconv"
 
-	"github.com/goccy/go-json"
 	"github.com/jellydator/ttlcache/v3"
+	jsoniter "github.com/json-iterator/go"
+)
+
+var (
+	hasherSeed = maphash.MakeSeed()
+	json       = jsoniter.ConfigCompatibleWithStandardLibrary
 )
 
 type JsonRpcError struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
+}
+
+func (e *JsonRpcError) Clone() *JsonRpcError {
+	if e == nil {
+		return nil
+	}
+	return &JsonRpcError{
+		Code:    e.Code,
+		Message: e.Message,
+		Data:    e.Data,
+	}
 }
 
 type JsonRpcMsg struct {
@@ -23,13 +41,67 @@ type JsonRpcMsg struct {
 	Error   *JsonRpcError `json:"error,omitempty"`
 }
 
-func (j *JsonRpcMsg) Marshall() ([]byte, error) {
+func (j *JsonRpcMsg) UnmarshalJSON(b []byte) error {
+	type msg JsonRpcMsg
+
+	var dest = struct {
+		*msg
+		ID jsoniter.RawMessage `json:"id,omitempty"`
+	}{
+		msg: (*msg)(j),
+	}
+
+	if err := json.Unmarshal(b, &dest); err != nil {
+		return err
+	}
+
+	i, err := strconv.Atoi(string(dest.ID))
+	if err == nil {
+		j.ID = i
+	} else {
+		j.ID = string(dest.ID)
+	}
+
+	return nil
+}
+
+func (j *JsonRpcMsg) Clone() *JsonRpcMsg {
+	return &JsonRpcMsg{
+		Version: j.Version,
+		ID:      j.ID,
+		Method:  j.Method,
+		Params:  j.Params,
+		Result:  j.Result,
+		Error:   j.Error.Clone(),
+	}
+}
+
+func (j *JsonRpcMsg) CloneWithID(id interface{}) *JsonRpcMsg {
+	return &JsonRpcMsg{
+		Version: j.Version,
+		ID:      id,
+		Method:  j.Method,
+		Params:  j.Params,
+		Result:  j.Result,
+		Error:   j.Error.Clone(),
+	}
+}
+
+func (j *JsonRpcMsg) Hash() uint64 {
+	b, err := json.Marshal(j.Params)
+	if err != nil {
+		return 0
+	}
+	return maphash.Bytes(hasherSeed, append([]byte(j.Method), b...))
+}
+
+func (j *JsonRpcMsg) Marshal() ([]byte, error) {
 	return json.Marshal(j)
 }
 
 type JsonRpcMsgs []*JsonRpcMsg
 
-func (j JsonRpcMsgs) Marshall() ([]byte, error) {
+func (j JsonRpcMsgs) Marshal() ([]byte, error) {
 	return json.Marshal(j)
 }
 
@@ -50,6 +122,26 @@ func UnauthorizedResponse(req *JsonRpcMsg) *JsonRpcMsg {
 		Error: &JsonRpcError{
 			Code:    http.StatusUnauthorized,
 			Message: "unauthorized access",
+		},
+		ID: req.ID,
+	}
+}
+
+func EmptyResult(req *JsonRpcMsg) *JsonRpcMsg {
+	return &JsonRpcMsg{
+		Version: "2.0",
+		Result:  make(map[string]string),
+		ID:      req.ID,
+	}
+}
+
+func ErrorResponse(req *JsonRpcMsg, code int, message string, data interface{}) *JsonRpcMsg {
+	return &JsonRpcMsg{
+		Version: "2.0",
+		Error: &JsonRpcError{
+			Code:    code,
+			Message: message,
+			Data:    data,
 		},
 		ID: req.ID,
 	}

@@ -10,6 +10,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	defaultCacheTTL = time.Minute
+)
+
 type Config struct {
 	Host     string             `yaml:"host,omitempty" default:"0.0.0.0"`
 	RpcPort  int                `yaml:"rpcPort,omitempty" default:"26657"`
@@ -45,9 +49,11 @@ type LcdConfig struct {
 }
 
 type RpcConfig struct {
-	Default RuleAction     `yaml:"default,omitempty" default:"allow"`
-	Rules   []*HttpRule    `yaml:"rules,omitempty"`
-	JsonRpc *JsonRpcConfig `yaml:"jsonrpc,omitempty"`
+	Default              RuleAction     `yaml:"default,omitempty" default:"allow"`
+	Rules                []*HttpRule    `yaml:"rules,omitempty"`
+	JsonRpc              *JsonRpcConfig `yaml:"jsonrpc,omitempty"`
+	WebSocketEnabled     bool           `yaml:"webSocketEnabled,omitempty" default:"true"`
+	WebSocketConnections int            `yaml:"webSocketConnections,omitempty" default:"10"`
 }
 
 type JsonRpcConfig struct {

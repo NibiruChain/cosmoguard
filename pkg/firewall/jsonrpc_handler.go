@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"sync"
 
-	"github.com/goccy/go-json"
 	"github.com/jellydator/ttlcache/v3"
 	log "github.com/sirupsen/logrus"
 )
@@ -17,6 +16,7 @@ import (
 type JsonRpcHandler struct {
 	cache         *ttlcache.Cache[uint64, *JsonRpcMsg]
 	defaultAction RuleAction
+	wsProxy       *JsonRpcWebSocketProxy
 	rules         []*JsonRpcRule
 	mu            sync.RWMutex
 	hash          *maphash.Hash
@@ -30,18 +30,38 @@ func NewJsonRpcHandler(opts ...Option[JsonRpcHandlerOptions]) (*JsonRpcHandler, 
 	handler := &JsonRpcHandler{
 		hash: &maphash.Hash{},
 	}
+
+	var cacheOptions []ttlcache.Option[uint64, *JsonRpcMsg]
 	if cfg.CacheConfig != nil {
-		cacheOptions := []ttlcache.Option[uint64, *JsonRpcMsg]{ttlcache.WithTTL[uint64, *JsonRpcMsg](cfg.CacheConfig.TTL)}
+		cacheOptions = append(cacheOptions, ttlcache.WithTTL[uint64, *JsonRpcMsg](cfg.CacheConfig.TTL))
 		if cfg.CacheConfig.DisableTouchOnHit {
 			cacheOptions = append(cacheOptions, ttlcache.WithDisableTouchOnHit[uint64, *JsonRpcMsg]())
 		}
-		handler.cache = ttlcache.New[uint64, *JsonRpcMsg](cacheOptions...)
+	} else {
+		cacheOptions = append(cacheOptions, ttlcache.WithTTL[uint64, *JsonRpcMsg](defaultCacheTTL))
 	}
+	handler.cache = ttlcache.New[uint64, *JsonRpcMsg](cacheOptions...)
+
+	if cfg.WebsocketEnabled {
+		var err error
+		handler.wsProxy, err = NewJsonRpcWebSocketProxy(cfg.WebsocketBackend, cfg.WebsocketConnections, handler.cache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return handler, nil
 }
 
 func (h *JsonRpcHandler) Start() error {
-	h.cache.Start()
+	go h.cache.Start()
+	if h.wsProxy != nil {
+		go func() {
+			if err := h.wsProxy.Start(); err != nil {
+				log.Errorf("error on websocket proxy: %v", err)
+			}
+		}()
+	}
 	return nil
 }
 
@@ -50,34 +70,24 @@ func (h *JsonRpcHandler) SetRules(rules []*JsonRpcRule, defaultAction RuleAction
 	defer h.mu.Unlock()
 	h.rules = rules
 	h.defaultAction = defaultAction
+	h.wsProxy.SetRules(rules, defaultAction)
 }
 
 func (h *JsonRpcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
-	log.Info("serving jsonrpc request")
+	log.Info("serving http jsonrpc request")
 	if r.Method == http.MethodPost && r.URL.Path == "/" {
 		h.handleHttp(w, r, next)
 		return
 	}
 
-	// TODO: handle websocket requests
+	if h.wsProxy != nil && r.URL.Path == websocketPath && r.Method == http.MethodGet {
+		log.Info("handling jsonrpc websocket connection")
+		h.wsProxy.HandleConnection(w, r)
+		return
+	}
 
-	// If it is an unexpected request let the main proxy handle it
-	next(w, r)
-}
-
-func (h *JsonRpcHandler) getHash(req *JsonRpcMsg) (uint64, error) {
-	h.hash.Reset()
-	if _, err := h.hash.WriteString(req.Method); err != nil {
-		return 0, err
-	}
-	b, err := json.Marshal(req.Params)
-	if err != nil {
-		return 0, err
-	}
-	if _, err := h.hash.Write(b); err != nil {
-		return 0, err
-	}
-	return h.hash.Sum64(), nil
+	w.WriteHeader(http.StatusBadRequest)
+	w.Write([]byte("unexpected request"))
 }
 
 func (h *JsonRpcHandler) handleHttp(w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
@@ -107,13 +117,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 	defer h.mu.RUnlock()
 
 	for _, rule := range h.rules {
-		hash, err := h.getHash(request)
-		if err != nil {
-			log.Errorf("could not calculate hash for request: %v", err)
-			next(w, r)
-			return
-		}
-
+		hash := request.Hash()
 		match := rule.Match(request)
 		if match {
 			switch rule.Action {
@@ -164,7 +168,7 @@ func (h *JsonRpcHandler) getSingleUpstreamResponse(w http.ResponseWriter, r *htt
 }
 
 func (h *JsonRpcHandler) writeSingleResponse(w http.ResponseWriter, res *JsonRpcMsg) {
-	b, err := res.Marshall()
+	b, err := res.Marshal()
 	if err != nil {
 		log.Errorf("error marshalling response from cache: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -178,18 +182,13 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 
 	h.mu.RLock()
 	for _, req := range requests {
-		hash, err := h.getHash(req)
-		if err != nil {
-			log.Errorf("could not calculate hash for request: %v", err)
-			continue
-		}
 		for _, rule := range h.rules {
 			match := rule.Match(req)
 			if match {
 				switch rule.Action {
 				case RuleActionAllow:
 					log.Info("request allowed")
-					responses.AddPendingOrLoadFromCache(req, h.cache, rule.Cache, hash)
+					responses.AddPendingOrLoadFromCache(req, h.cache, rule.Cache, req.Hash())
 
 				case RuleActionDeny:
 					log.Info("request denied")
@@ -218,7 +217,7 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 		responses.StoreInCache(h.cache)
 	}
 
-	b, err := responses.GetFinal().Marshall()
+	b, err := responses.GetFinal().Marshal()
 	if err != nil {
 		log.Errorf("error marshalling response: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -228,7 +227,7 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 }
 
 func (h *JsonRpcHandler) getResponsesFromUpstream(httpRequest *http.Request, requests JsonRpcMsgs, next func(http.ResponseWriter, *http.Request)) (JsonRpcMsgs, error) {
-	b, err := requests.Marshall()
+	b, err := requests.Marshal()
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling requests to upstream: %v", err)
 	}

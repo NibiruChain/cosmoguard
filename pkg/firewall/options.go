@@ -31,12 +31,16 @@ func DefaultGrpcProxyOptions() *GrpcProxyOptions {
 
 type JsonRpcHandlerOptions struct {
 	*SharedOptions
-	WebsocketPath string
+	WebsocketBackend     string
+	WebsocketEnabled     bool
+	WebsocketConnections int
 }
 
 func DefaultJsonRpcHandlerOptions() *JsonRpcHandlerOptions {
 	cfg := &JsonRpcHandlerOptions{
-		WebsocketPath: "/websocket",
+		WebsocketBackend:     "localhost:26657",
+		WebsocketEnabled:     true,
+		WebsocketConnections: 10,
 	}
 	cfg.SharedOptions = DefaultSharedOptions()
 	return cfg
@@ -73,11 +77,33 @@ func WithEndpointHandler[T HttpProxyOptions](endpoints []Endpoint, handler Endpo
 	}
 }
 
-func WithWebSocketPath[T JsonRpcHandlerOptions](path string) Option[T] {
+func WithWebSocketBackend[T JsonRpcHandlerOptions](backend string) Option[T] {
 	return func(opts *T) {
 		switch x := any(opts).(type) {
 		case *JsonRpcHandlerOptions:
-			x.WebsocketPath = path
+			x.WebsocketBackend = backend
+		default:
+			panic("unexpected use")
+		}
+	}
+}
+
+func WithWebSocketEnabled[T JsonRpcHandlerOptions](enabled bool) Option[T] {
+	return func(opts *T) {
+		switch x := any(opts).(type) {
+		case *JsonRpcHandlerOptions:
+			x.WebsocketEnabled = enabled
+		default:
+			panic("unexpected use")
+		}
+	}
+}
+
+func WithWebSocketConnections[T JsonRpcHandlerOptions](v int) Option[T] {
+	return func(opts *T) {
+		switch x := any(opts).(type) {
+		case *JsonRpcHandlerOptions:
+			x.WebsocketConnections = v
 		default:
 			panic("unexpected use")
 		}

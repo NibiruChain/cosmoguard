@@ -62,15 +62,15 @@ rpc:
 
   jsonrpc:
     rules:
-      - priority: 9999
-        action: deny
-        methods: [ ]
+#      - priority: 9999
+#        action: deny
+#        methods: [ ]
 
       - priority:
         action: allow
         methods: [ "status" ]
-        cache:
-          enable: true
+#        cache:
+#          enable: true
 
       - priority:
         action: allow
