@@ -22,9 +22,10 @@ type GrpcProxy struct {
 	server        *grpc.Server
 	client        *grpc.ClientConn
 	mu            sync.RWMutex
+	log           *log.Entry
 }
 
-func NewGrpcProxy(localAddr, remoteAddr string, opts ...Option[GrpcProxyOptions]) (*GrpcProxy, error) {
+func NewGrpcProxy(name, localAddr, remoteAddr string, opts ...Option[GrpcProxyOptions]) (*GrpcProxy, error) {
 	cfg := DefaultGrpcProxyOptions()
 	for _, opt := range opts {
 		opt(cfg)
@@ -44,6 +45,7 @@ func NewGrpcProxy(localAddr, remoteAddr string, opts ...Option[GrpcProxyOptions]
 	}
 
 	proxy := GrpcProxy{
+		log:      log.WithField("proxy", name),
 		listener: lis,
 		client:   grpcConn,
 		server:   grpcproxy.NewProxy(grpcConn),
@@ -55,7 +57,7 @@ func NewGrpcProxy(localAddr, remoteAddr string, opts ...Option[GrpcProxyOptions]
 }
 
 func (p *GrpcProxy) Start() error {
-	log.Infof("starting grpc proxy at %v", p.listener.Addr().String())
+	p.log.WithField("address", p.listener.Addr().String()).Info("starting grpc proxy")
 	return p.server.Serve(p.listener)
 }
 
@@ -82,10 +84,12 @@ func (p *GrpcProxy) Handle(ctx context.Context, method string) (context.Context,
 		if match {
 			switch rule.Action {
 			case RuleActionAllow:
-				return p.allow(outCtx)
+				p.log.WithField("method", method).Info("request allowed")
+				return ctx, p.client, nil
 
 			case RuleActionDeny:
-				return p.deny(outCtx)
+				p.log.WithField("method", method).Info("request denied")
+				return ctx, nil, status.Errorf(codes.Unavailable, "Unauthorized")
 
 			default:
 				log.Errorf("unrecognized rule action %q", rule.Action)
@@ -94,17 +98,7 @@ func (p *GrpcProxy) Handle(ctx context.Context, method string) (context.Context,
 	}
 
 	if p.defaultAction == RuleActionAllow {
-		return p.allow(outCtx)
+		return ctx, p.client, nil
 	}
-	return p.deny(outCtx)
-}
-
-func (p *GrpcProxy) allow(ctx context.Context) (context.Context, *grpc.ClientConn, error) {
-	log.Info("request allowed")
-	return ctx, p.client, nil
-}
-
-func (p *GrpcProxy) deny(ctx context.Context) (context.Context, *grpc.ClientConn, error) {
-	log.Info("request denied")
 	return ctx, nil, status.Errorf(codes.Unavailable, "Unauthorized")
 }

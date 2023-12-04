@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -14,6 +15,9 @@ import (
 )
 
 const (
+	jsonRpcVersion       = "2.0"
+	connectRetryPeriod   = 5 * time.Second
+	connectTimeout       = 10 * time.Second
 	responseTimeout      = 5 * time.Second
 	methodSubscribe      = "subscribe"
 	methodUnsubscribe    = "unsubscribe"
@@ -25,17 +29,18 @@ type upstreamConnection struct {
 	url        url.URL
 	readMutex  sync.Mutex
 	writeMutex sync.Mutex
+	log        *log.Entry
+	dialer     *websocket.Dialer
 }
 
-func newUpstreamConnection(url url.URL) (*upstreamConnection, error) {
-	conn, _, err := websocket.DefaultDialer.Dial(url.String(), nil)
-	if err != nil {
-		return nil, err
-	}
+func newUpstreamConnection(url url.URL) *upstreamConnection {
 	return &upstreamConnection{
-		conn: conn,
-		url:  url,
-	}, nil
+		url: url,
+		dialer: &websocket.Dialer{
+			Proxy:            http.ProxyFromEnvironment,
+			HandshakeTimeout: connectTimeout,
+		},
+	}
 }
 
 func (u *upstreamConnection) Receive() (messageType int, p []byte, err error) {
@@ -50,23 +55,34 @@ func (u *upstreamConnection) Send(b []byte) error {
 	return u.conn.WriteMessage(websocket.TextMessage, b)
 }
 
-func (u *upstreamConnection) Reconnect() error {
+func (u *upstreamConnection) connect() error {
+	u.log.Debug("connecting to upstream websocket")
 	var err error
-	u.conn, _, err = websocket.DefaultDialer.Dial(u.url.String(), nil)
+	u.conn, _, err = u.dialer.Dial(u.url.String(), nil)
+	if err == nil {
+		u.log.Debug("upstream websocket connected")
+	}
 	return err
 }
 
-func (u *upstreamConnection) Run(callback func([]byte)) error {
+func (u *upstreamConnection) Run(log *log.Entry, onNewMessage func([]byte), onConnect func(connection *upstreamConnection)) error {
+	u.log = log
 	for {
+		if u.conn == nil {
+			if err := u.connect(); err != nil {
+				u.log.Errorf("error connecting: %v", err)
+				time.Sleep(connectRetryPeriod)
+				continue
+			}
+			onConnect(u)
+		}
 		_, message, err := u.Receive()
 		if err != nil {
-			log.Errorf("websocket closed: %v", err)
-			if err = u.Reconnect(); err != nil {
-				log.Errorf("error reconnecting: %v", err)
-			}
+			u.log.Errorf("websocket closed: %v", err)
+			u.conn = nil
 			continue
 		}
-		callback(message)
+		onNewMessage(message)
 	}
 }
 
@@ -76,13 +92,15 @@ type UpstreamConnectionPool struct {
 	IdGen        *util.UniqueID
 	respChannels *sync.Map
 
+	log *log.Entry
+
 	subscriptionUpstreamConnection *sync.Map //map[int]*upstreamConnection
 	subscriptionChannels           *sync.Map //map[int]map[chan []byte]interface{}
 	subscriptions                  *sync.Map //map[string]int
 	clientSubscriptions            *sync.Map //map[chan []byte][]int
 }
 
-func NewUpstreamConnectionPool(backend string, n int) (*UpstreamConnectionPool, error) {
+func NewUpstreamConnectionPool(backend string, n int) *UpstreamConnectionPool {
 	pool := &UpstreamConnectionPool{
 		upstream:     make([]*upstreamConnection, n),
 		IdGen:        &util.UniqueID{},
@@ -95,24 +113,21 @@ func NewUpstreamConnectionPool(backend string, n int) (*UpstreamConnectionPool, 
 	}
 
 	backendUrl := url.URL{Scheme: "ws", Host: backend, Path: websocketPath}
-	var err error
 	for i := 0; i < n; i++ {
-		pool.upstream[i], err = newUpstreamConnection(backendUrl)
-		if err != nil {
-			return nil, err
-		}
+		pool.upstream[i] = newUpstreamConnection(backendUrl)
 	}
 
-	return pool, nil
+	return pool
 }
 
-func (u *UpstreamConnectionPool) Start() error {
-	for _, conn := range u.upstream {
-		go func(c *upstreamConnection) {
-			if err := c.Run(u.onConnectionMessage); err != nil {
-				log.Errorf("error on upstream connection: %v", err)
+func (u *UpstreamConnectionPool) Start(log *log.Entry) error {
+	u.log = log
+	for i, conn := range u.upstream {
+		go func(id int, c *upstreamConnection) {
+			if err := c.Run(u.log.WithField("id", id), u.onConnectionMessage, u.onUpstreamConnected); err != nil {
+				u.log.Errorf("error on upstream connection: %v", err)
 			}
-		}(conn)
+		}(i, conn)
 	}
 	return nil
 }
@@ -276,23 +291,51 @@ func (u *UpstreamConnectionPool) removeSubscription(request *JsonRpcMsg, writeCh
 	return EmptyResult(request), nil
 }
 
+func (u *UpstreamConnectionPool) onUpstreamConnected(upstream *upstreamConnection) {
+	u.subscriptionUpstreamConnection.Range(func(key, value any) bool {
+		subscriptionID := key.(int)
+		conn := value.(*upstreamConnection)
+		if conn == upstream {
+			u.log.WithField("subscription", subscriptionID).Info("restoring subscription")
+			u.subscriptions.Range(func(key, value any) bool {
+				query := key.(string)
+				if subscriptionID == value.(int) {
+					msg := &JsonRpcMsg{
+						Version: jsonRpcVersion,
+						ID:      subscriptionID,
+						Method:  methodSubscribe,
+						Params:  []string{query},
+					}
+					b, _ := msg.Marshal()
+					if err := upstream.Send(b); err != nil {
+						log.WithField("subscription", subscriptionID).Errorf("error restoring subscription: %v", err)
+					}
+				}
+				return true
+			})
+		}
+		return true
+	})
+}
+
 func (u *UpstreamConnectionPool) removeAllSubscriptions(request *JsonRpcMsg, writeCh chan []byte) (*JsonRpcMsg, error) {
 	u.DisconnectChannel(writeCh)
 	return EmptyResult(request), nil
 }
 
 func (u *UpstreamConnectionPool) startSubscriptionRoutine(id int, subscriptionChannel chan *JsonRpcMsg) {
-	log.WithField("subscriptionID", id).Info("new upstream subscription started")
+	u.log.WithField("subscriptionID", id).Info("new upstream subscription started")
 	for {
 		msg, ok := <-subscriptionChannel
 		if !ok {
-			log.WithField("subscriptionID", id).Info("upstream subscription canceled")
+			u.log.WithField("subscriptionID", id).Warn("upstream subscription canceled")
 			break
 		}
 		v, ok := u.subscriptionChannels.Load(id)
 		if !ok {
-			log.WithField("subscriptionID", id).Info("no channels connected to subscription")
+			u.log.WithField("subscriptionID", id).Warn("no channels connected to subscription")
 		}
+		u.log.WithField("subscriptionID", id).Info("broadcasting message to subscribers")
 		v.(*sync.Map).Range(func(key, value any) bool {
 			ch := key.(chan []byte)
 			originID := value.(interface{})
@@ -340,9 +383,9 @@ func (u *UpstreamConnectionPool) DisconnectChannel(writeCh chan []byte) {
 
 func (u *UpstreamConnectionPool) destroyUpstreamSubscription(subID int, query string) {
 	unsubscribeMsg := &JsonRpcMsg{
-		Version: "2.0",
+		Version: jsonRpcVersion,
 		ID:      subID,
-		Method:  "unsubscribe",
+		Method:  methodUnsubscribe,
 		Params:  []string{query},
 	}
 

@@ -15,15 +15,15 @@ const (
 )
 
 type Config struct {
-	Host     string             `yaml:"host,omitempty" default:"0.0.0.0"`
-	RpcPort  int                `yaml:"rpcPort,omitempty" default:"26657"`
-	LcdPort  int                `yaml:"lcdPort,omitempty" default:"1317"`
-	GrpcPort int                `yaml:"grpcPort,omitempty" default:"9090"`
-	Node     *NodeConfig        `yaml:"node,omitempty"`
-	Cache    *CacheGlobalConfig `yaml:"cache,omitempty"`
-	LCD      *LcdConfig         `yaml:"lcd,omitempty"`
-	RPC      *RpcConfig         `yaml:"rpc,omitempty"`
-	GRPC     *GrpcConfig        `yaml:"grpc,omitempty"`
+	Host     string            `yaml:"host,omitempty" default:"0.0.0.0"`
+	RpcPort  int               `yaml:"rpcPort,omitempty" default:"26657"`
+	LcdPort  int               `yaml:"lcdPort,omitempty" default:"1317"`
+	GrpcPort int               `yaml:"grpcPort,omitempty" default:"9090"`
+	Node     NodeConfig        `yaml:"node,omitempty"`
+	Cache    CacheGlobalConfig `yaml:"cache,omitempty"`
+	LCD      LcdConfig         `yaml:"lcd,omitempty"`
+	RPC      RpcConfig         `yaml:"rpc,omitempty"`
+	GRPC     GrpcConfig        `yaml:"grpc,omitempty"`
 }
 
 type NodeConfig struct {
@@ -34,8 +34,8 @@ type NodeConfig struct {
 }
 
 type CacheGlobalConfig struct {
-	TTL               time.Duration `yaml:"ttl,omitempty" default:"1m"`
-	DisableTouchOnHit bool          `yaml:"disableTouchOnHit,omitempty"`
+	TTL        time.Duration `yaml:"ttl,omitempty" default:"1m"`
+	TouchOnHit bool          `yaml:"touchOnHit,omitempty"`
 }
 
 type RuleCache struct {
@@ -49,11 +49,11 @@ type LcdConfig struct {
 }
 
 type RpcConfig struct {
-	Default              RuleAction     `yaml:"default,omitempty" default:"allow"`
-	Rules                []*HttpRule    `yaml:"rules,omitempty"`
-	JsonRpc              *JsonRpcConfig `yaml:"jsonrpc,omitempty"`
-	WebSocketEnabled     bool           `yaml:"webSocketEnabled,omitempty" default:"true"`
-	WebSocketConnections int            `yaml:"webSocketConnections,omitempty" default:"10"`
+	Default              RuleAction    `yaml:"default,omitempty" default:"allow"`
+	Rules                []*HttpRule   `yaml:"rules,omitempty"`
+	JsonRpc              JsonRpcConfig `yaml:"jsonrpc,omitempty"`
+	WebSocketEnabled     bool          `yaml:"webSocketEnabled,omitempty" default:"true"`
+	WebSocketConnections int           `yaml:"webSocketConnections,omitempty" default:"10"`
 }
 
 type JsonRpcConfig struct {
@@ -78,7 +78,7 @@ func ReadConfigFromFile(path string) (*Config, error) {
 	}
 
 	// Sort rules by priority and compile rules
-	if cfg.LCD != nil && cfg.LCD.Rules != nil {
+	if cfg.LCD.Rules != nil {
 		sort.Slice(cfg.LCD.Rules, func(i, j int) bool {
 			return cfg.LCD.Rules[i].Priority < cfg.LCD.Rules[j].Priority
 		})
@@ -86,7 +86,7 @@ func ReadConfigFromFile(path string) (*Config, error) {
 			rule.Compile()
 		}
 	}
-	if cfg.GRPC != nil && cfg.GRPC.Rules != nil {
+	if cfg.GRPC.Rules != nil {
 		sort.Slice(cfg.GRPC.Rules, func(i, j int) bool {
 			return cfg.GRPC.Rules[i].Priority < cfg.GRPC.Rules[j].Priority
 		})
@@ -94,23 +94,22 @@ func ReadConfigFromFile(path string) (*Config, error) {
 			rule.Compile()
 		}
 	}
-	if cfg.RPC != nil {
-		if cfg.RPC.Rules != nil {
-			sort.Slice(cfg.RPC.Rules, func(i, j int) bool {
-				return cfg.RPC.Rules[i].Priority < cfg.RPC.Rules[j].Priority
-			})
-		}
-		for _, rule := range cfg.RPC.Rules {
-			rule.Compile()
-		}
 
-		if cfg.RPC.JsonRpc != nil && cfg.RPC.JsonRpc.Rules != nil {
-			sort.Slice(cfg.RPC.JsonRpc.Rules, func(i, j int) bool {
-				return cfg.RPC.JsonRpc.Rules[i].Priority < cfg.RPC.JsonRpc.Rules[j].Priority
-			})
-			for _, rule := range cfg.RPC.JsonRpc.Rules {
-				rule.Compile()
-			}
+	if cfg.RPC.Rules != nil {
+		sort.Slice(cfg.RPC.Rules, func(i, j int) bool {
+			return cfg.RPC.Rules[i].Priority < cfg.RPC.Rules[j].Priority
+		})
+	}
+	for _, rule := range cfg.RPC.Rules {
+		rule.Compile()
+	}
+
+	if cfg.RPC.JsonRpc.Rules != nil {
+		sort.Slice(cfg.RPC.JsonRpc.Rules, func(i, j int) bool {
+			return cfg.RPC.JsonRpc.Rules[i].Priority < cfg.RPC.JsonRpc.Rules[j].Priority
+		})
+		for _, rule := range cfg.RPC.JsonRpc.Rules {
+			rule.Compile()
 		}
 	}
 

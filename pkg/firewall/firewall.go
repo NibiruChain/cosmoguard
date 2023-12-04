@@ -21,11 +21,13 @@ type Firewall struct {
 
 func New(path string) (*Firewall, error) {
 	firewall := &Firewall{cfgFile: path}
+
+	log.WithField("file", path).Info("loading config file")
 	if err := firewall.loadConfig(); err != nil {
 		return nil, err
 	}
 
-	grpcProxy, err := NewGrpcProxy(
+	grpcProxy, err := NewGrpcProxy("grpc",
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.GrpcPort),
 		fmt.Sprintf("%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.GrpcPort),
 	)
@@ -34,10 +36,10 @@ func New(path string) (*Firewall, error) {
 	}
 	firewall.grpcProxy = grpcProxy
 
-	lcdProxy, err := NewHttpProxy(
+	lcdProxy, err := NewHttpProxy("lcd",
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.LcdPort),
 		fmt.Sprintf("http://%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.LcdPort),
-		WithCacheConfig[HttpProxyOptions](firewall.cfg.Cache),
+		WithCacheConfig[HttpProxyOptions](&firewall.cfg.Cache),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up lcd firewall proxy: %v", err)
@@ -45,7 +47,7 @@ func New(path string) (*Firewall, error) {
 	firewall.lcdProxy = lcdProxy
 
 	jsonRpcHandler, err := NewJsonRpcHandler(
-		WithCacheConfig[JsonRpcHandlerOptions](firewall.cfg.Cache),
+		WithCacheConfig[JsonRpcHandlerOptions](&firewall.cfg.Cache),
 		WithWebSocketEnabled[JsonRpcHandlerOptions](firewall.cfg.RPC.WebSocketEnabled),
 		WithWebSocketBackend[JsonRpcHandlerOptions](fmt.Sprintf("%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.RpcPort)),
 		WithWebSocketConnections[JsonRpcHandlerOptions](firewall.cfg.RPC.WebSocketConnections),
@@ -55,10 +57,10 @@ func New(path string) (*Firewall, error) {
 	}
 	firewall.jsonRpcHandler = jsonRpcHandler
 
-	rpcProxy, err := NewHttpProxy(
+	rpcProxy, err := NewHttpProxy("rpc",
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.RpcPort),
 		fmt.Sprintf("http://%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.RpcPort),
-		WithCacheConfig[HttpProxyOptions](firewall.cfg.Cache),
+		WithCacheConfig[HttpProxyOptions](&firewall.cfg.Cache),
 		WithEndpointHandler[HttpProxyOptions]([]Endpoint{
 			{
 				Path:   "/",
@@ -114,7 +116,7 @@ func (f *Firewall) WatchConfigFile() error {
 			if !ok {
 				return fmt.Errorf("could not retrieve event")
 			}
-			log.Info("reloading config file")
+			log.WithField("file", f.cfgFile).Info("reloading config file")
 			if err := f.loadConfig(); err != nil {
 				return err
 			}
@@ -140,24 +142,19 @@ func (f *Firewall) applyRules() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	log.Info("applying firewall rules")
+
 	// Rules for LCD
-	if f.cfg.LCD != nil && f.cfg.LCD.Rules != nil {
-		f.lcdProxy.SetRules(f.cfg.LCD.Rules, f.cfg.LCD.Default)
-	}
+	log.WithField("default", f.cfg.LCD.Default).Debug("applying LCD firewall rules")
+	f.lcdProxy.SetRules(f.cfg.LCD.Rules, f.cfg.LCD.Default)
 
 	// Rules for gRPC
-	if f.cfg.GRPC != nil && f.cfg.GRPC.Rules != nil {
-		f.grpcProxy.SetRules(f.cfg.GRPC.Rules, f.cfg.GRPC.Default)
-	}
+	log.WithField("default", f.cfg.GRPC.Default).Debug("applying gRPC firewall rules")
+	f.grpcProxy.SetRules(f.cfg.GRPC.Rules, f.cfg.GRPC.Default)
 
 	// Rules for RPC (and jsonrpc)
-	if f.cfg.RPC != nil {
-		if f.cfg.RPC.Rules != nil {
-			f.rpcProxy.SetRules(f.cfg.RPC.Rules, f.cfg.RPC.Default)
-		}
-		if f.cfg.RPC.JsonRpc != nil && f.cfg.RPC.JsonRpc.Rules != nil {
-			f.jsonRpcHandler.SetRules(f.cfg.RPC.JsonRpc.Rules, f.cfg.RPC.JsonRpc.Default)
-		}
-	}
-
+	log.WithField("default", f.cfg.RPC.Default).Debug("applying RPC firewall rules")
+	f.rpcProxy.SetRules(f.cfg.RPC.Rules, f.cfg.RPC.Default)
+	log.WithField("default", f.cfg.RPC.JsonRpc.Default).Debug("applying JSONRPC firewall rules")
+	f.jsonRpcHandler.SetRules(f.cfg.RPC.JsonRpc.Rules, f.cfg.RPC.JsonRpc.Default)
 }

@@ -18,11 +18,13 @@ func init() {
 	homedir, _ := os.UserHomeDir()
 	flag.StringVar(&configFile, "config", filepath.Join(homedir, defaultConfigFileName), "Path to configuration file.")
 	flag.StringVar(&logLevel, "log-level", "info", "log level.")
+	flag.StringVar(&logFormat, "log-format", "json", "log format (either json or text)")
 }
 
 var (
 	configFile string
 	logLevel   string
+	logFormat  string
 )
 
 func main() {
@@ -32,6 +34,9 @@ func main() {
 		log.Fatal(err)
 	}
 	log.SetLevel(logLvl)
+	if logFormat == "json" {
+		log.SetFormatter(&log.JSONFormatter{})
+	}
 
 	f, err := firewall.New(configFile)
 	if err != nil {

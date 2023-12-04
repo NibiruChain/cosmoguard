@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/teambition/jsonrpc-go"
 	"gotest.tools/assert"
 )
 
@@ -101,16 +100,15 @@ func TestJsonRpcRule_Match(t *testing.T) {
 	table := []struct {
 		Rule        JsonRpcRule
 		ExpectMatch bool
-		Request     *jsonrpc.RPC
+		Request     *JsonRpcMsg
 	}{
 		{
 			Rule: JsonRpcRule{
 				Action:  RuleActionAllow,
 				Methods: []string{"status"},
 			},
-			Request: &jsonrpc.RPC{
+			Request: &JsonRpcMsg{
 				ID:      1234,
-				Type:    "request",
 				Version: "2.0",
 				Method:  "status",
 			},
@@ -121,9 +119,8 @@ func TestJsonRpcRule_Match(t *testing.T) {
 				Action:  RuleActionAllow,
 				Methods: []string{},
 			},
-			Request: &jsonrpc.RPC{
+			Request: &JsonRpcMsg{
 				ID:      1234,
-				Type:    "request",
 				Version: "2.0",
 				Method:  "status",
 			},
@@ -134,9 +131,8 @@ func TestJsonRpcRule_Match(t *testing.T) {
 				Action:  RuleActionAllow,
 				Methods: []string{"status"},
 			},
-			Request: &jsonrpc.RPC{
+			Request: &JsonRpcMsg{
 				ID:      1234,
-				Type:    "request",
 				Version: "2.0",
 				Method:  "abci_query",
 			},
@@ -147,9 +143,8 @@ func TestJsonRpcRule_Match(t *testing.T) {
 				Action:  RuleActionAllow,
 				Methods: []string{"abci_*"},
 			},
-			Request: &jsonrpc.RPC{
+			Request: &JsonRpcMsg{
 				ID:      1234,
-				Type:    "request",
 				Version: "2.0",
 				Method:  "abci_query",
 				Params:  make(map[string]interface{}),
@@ -164,9 +159,8 @@ func TestJsonRpcRule_Match(t *testing.T) {
 					"path": "/cosmos.bank.v1beta1.Query/*",
 				},
 			},
-			Request: &jsonrpc.RPC{
+			Request: &JsonRpcMsg{
 				ID:      1234,
-				Type:    "request",
 				Version: "2.0",
 				Method:  "abci_query",
 				Params: map[string]interface{}{
@@ -185,9 +179,8 @@ func TestJsonRpcRule_Match(t *testing.T) {
 					"test": 1,
 				},
 			},
-			Request: &jsonrpc.RPC{
+			Request: &JsonRpcMsg{
 				ID:      1234,
-				Type:    "request",
 				Version: "2.0",
 				Method:  "abci_query",
 				Params: map[string]interface{}{
@@ -206,9 +199,8 @@ func TestJsonRpcRule_Match(t *testing.T) {
 					"test": 1,
 				},
 			},
-			Request: &jsonrpc.RPC{
+			Request: &JsonRpcMsg{
 				ID:      1234,
-				Type:    "request",
 				Version: "2.0",
 				Method:  "abci_query",
 				Params: map[string]interface{}{
@@ -226,9 +218,8 @@ func TestJsonRpcRule_Match(t *testing.T) {
 					"path": "/cosmos.bank.v1beta1.Query/*",
 				},
 			},
-			Request: &jsonrpc.RPC{
+			Request: &JsonRpcMsg{
 				ID:      1234,
-				Type:    "request",
 				Version: "2.0",
 				Method:  "abci_query",
 				Params: map[string]interface{}{
@@ -245,9 +236,8 @@ func TestJsonRpcRule_Match(t *testing.T) {
 					"path": "/cosmos.bank.v1beta1.Query/*",
 				},
 			},
-			Request: &jsonrpc.RPC{
+			Request: &JsonRpcMsg{
 				ID:      1234,
-				Type:    "request",
 				Version: "2.0",
 				Method:  "abci_query",
 				Params: map[string]interface{}{

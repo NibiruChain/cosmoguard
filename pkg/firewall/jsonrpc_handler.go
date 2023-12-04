@@ -20,6 +20,7 @@ type JsonRpcHandler struct {
 	rules         []*JsonRpcRule
 	mu            sync.RWMutex
 	hash          *maphash.Hash
+	log           *log.Entry
 }
 
 func NewJsonRpcHandler(opts ...Option[JsonRpcHandlerOptions]) (*JsonRpcHandler, error) {
@@ -34,7 +35,7 @@ func NewJsonRpcHandler(opts ...Option[JsonRpcHandlerOptions]) (*JsonRpcHandler, 
 	var cacheOptions []ttlcache.Option[uint64, *JsonRpcMsg]
 	if cfg.CacheConfig != nil {
 		cacheOptions = append(cacheOptions, ttlcache.WithTTL[uint64, *JsonRpcMsg](cfg.CacheConfig.TTL))
-		if cfg.CacheConfig.DisableTouchOnHit {
+		if !cfg.CacheConfig.TouchOnHit {
 			cacheOptions = append(cacheOptions, ttlcache.WithDisableTouchOnHit[uint64, *JsonRpcMsg]())
 		}
 	} else {
@@ -43,22 +44,18 @@ func NewJsonRpcHandler(opts ...Option[JsonRpcHandlerOptions]) (*JsonRpcHandler, 
 	handler.cache = ttlcache.New[uint64, *JsonRpcMsg](cacheOptions...)
 
 	if cfg.WebsocketEnabled {
-		var err error
-		handler.wsProxy, err = NewJsonRpcWebSocketProxy(cfg.WebsocketBackend, cfg.WebsocketConnections, handler.cache)
-		if err != nil {
-			return nil, err
-		}
+		handler.wsProxy = NewJsonRpcWebSocketProxy(cfg.WebsocketBackend, cfg.WebsocketConnections, handler.cache)
 	}
-
 	return handler, nil
 }
 
-func (h *JsonRpcHandler) Start() error {
+func (h *JsonRpcHandler) Start(logger *log.Entry) error {
+	h.log = logger.WithField("handler", "jsonrpc")
 	go h.cache.Start()
 	if h.wsProxy != nil {
 		go func() {
-			if err := h.wsProxy.Start(); err != nil {
-				log.Errorf("error on websocket proxy: %v", err)
+			if err := h.wsProxy.Start(h.log); err != nil {
+				h.log.Errorf("error on websocket proxy: %v", err)
 			}
 		}()
 	}
@@ -74,14 +71,14 @@ func (h *JsonRpcHandler) SetRules(rules []*JsonRpcRule, defaultAction RuleAction
 }
 
 func (h *JsonRpcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
-	log.Info("serving http jsonrpc request")
+	h.log.Debug("serving http jsonrpc request")
 	if r.Method == http.MethodPost && r.URL.Path == "/" {
 		h.handleHttp(w, r, next)
 		return
 	}
 
 	if h.wsProxy != nil && r.URL.Path == websocketPath && r.Method == http.MethodGet {
-		log.Info("handling jsonrpc websocket connection")
+		h.log.Debug("handling jsonrpc websocket connection")
 		h.wsProxy.HandleConnection(w, r)
 		return
 	}
@@ -93,8 +90,6 @@ func (h *JsonRpcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next 
 func (h *JsonRpcHandler) handleHttp(w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
 	var err error
 	r.Body = ReusableReader(r.Body)
-
-	log.Info("Cache:", h.cache.Len())
 
 	// Get jsonrpc requests from body
 	b, err := io.ReadAll(r.Body)
@@ -122,15 +117,21 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 		if match {
 			switch rule.Action {
 			case RuleActionAllow:
-				log.Info("request allowed")
-
 				if rule.Cache != nil {
 					if h.cache.Has(hash) {
-						log.Info("cache hit")
+						h.log.WithFields(map[string]interface{}{
+							"method": request.Method,
+							"params": request.Params,
+							"cache":  "hit",
+						}).Info("request allowed")
 						h.writeSingleResponse(w, h.cache.Get(hash).Value())
 						return
 					}
-					log.Info("cache miss")
+					h.log.WithFields(map[string]interface{}{
+						"method": request.Method,
+						"params": request.Params,
+						"cache":  "miss",
+					}).Info("request allowed")
 					h.getSingleUpstreamResponse(w, r, next, hash, rule.Cache)
 					return
 				}
@@ -138,12 +139,15 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 				return
 
 			case RuleActionDeny:
-				log.Info("request denied")
+				h.log.WithFields(map[string]interface{}{
+					"method": request.Method,
+					"params": request.Params,
+				}).Info("request denied")
 				h.writeSingleResponse(w, UnauthorizedResponse(request))
 				return
 
 			default:
-				log.Errorf("unrecognized rule action %q", rule.Action)
+				h.log.Errorf("unrecognized rule action %q", rule.Action)
 			}
 		}
 	}
@@ -160,7 +164,7 @@ func (h *JsonRpcHandler) getSingleUpstreamResponse(w http.ResponseWriter, r *htt
 
 	b, err := ww.GetWrittenBytes()
 	if err != nil {
-		log.Errorf("error getting data from upstream response: %v", err)
+		h.log.Errorf("error getting data from upstream response: %v", err)
 		return
 	}
 	res, _, _ := ParseJsonRpcMessage(b)
@@ -170,7 +174,7 @@ func (h *JsonRpcHandler) getSingleUpstreamResponse(w http.ResponseWriter, r *htt
 func (h *JsonRpcHandler) writeSingleResponse(w http.ResponseWriter, res *JsonRpcMsg) {
 	b, err := res.Marshal()
 	if err != nil {
-		log.Errorf("error marshalling response from cache: %v", err)
+		h.log.Errorf("error marshalling response from cache: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -180,6 +184,7 @@ func (h *JsonRpcHandler) writeSingleResponse(w http.ResponseWriter, res *JsonRpc
 func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
 	var responses JsonRpcResponses
 
+	h.log.WithField("requests", len(requests)).Info("handling batch of requests")
 	h.mu.RLock()
 	for _, req := range requests {
 		for _, rule := range h.rules {
@@ -187,15 +192,21 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 			if match {
 				switch rule.Action {
 				case RuleActionAllow:
-					log.Info("request allowed")
+					h.log.WithFields(map[string]interface{}{
+						"method": req.Method,
+						"params": req.Params,
+					}).Debug("request allowed")
 					responses.AddPendingOrLoadFromCache(req, h.cache, rule.Cache, req.Hash())
 
 				case RuleActionDeny:
-					log.Info("request denied")
+					h.log.WithFields(map[string]interface{}{
+						"method": req.Method,
+						"params": req.Params,
+					}).Debug("request denied")
 					responses.Deny(req)
 
 				default:
-					log.Errorf("unrecognized rule action %q", rule.Action)
+					h.log.Errorf("unrecognized rule action %q", rule.Action)
 				}
 				break
 			}
@@ -206,10 +217,10 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 	// send pending requests to upstream and grab the response
 	pendingRequests := responses.GetPendingRequests()
 	if len(pendingRequests) > 0 {
-		log.Info("getting from upstream")
+		h.log.Debug("getting from upstream")
 		upstreamResponses, err := h.getResponsesFromUpstream(r, responses.GetPendingRequests(), next)
 		if err != nil {
-			log.Errorf("error getting responses from upstream: %v", err)
+			h.log.Errorf("error getting responses from upstream: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -219,7 +230,7 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 
 	b, err := responses.GetFinal().Marshal()
 	if err != nil {
-		log.Errorf("error marshalling response: %v", err)
+		h.log.Errorf("error marshalling response: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

@@ -15,7 +15,7 @@ import (
 
 type EndpointHandler interface {
 	ServeHTTP(w http.ResponseWriter, r *http.Request, next func(w http.ResponseWriter, r *http.Request))
-	Start() error
+	Start(logger *log.Entry) error
 }
 
 type httpProxyEndpointHandler struct {
@@ -36,6 +36,7 @@ type HttpProxy struct {
 	cache            *ttlcache.Cache[string, CachedResponse]
 	endpointHandlers []*httpProxyEndpointHandler
 	mu               sync.RWMutex
+	log              *log.Entry
 }
 
 type CachedResponse struct {
@@ -43,7 +44,7 @@ type CachedResponse struct {
 	StatusCode int
 }
 
-func NewHttpProxy(localAddr, remoteAddr string, opts ...Option[HttpProxyOptions]) (*HttpProxy, error) {
+func NewHttpProxy(name, localAddr, remoteAddr string, opts ...Option[HttpProxyOptions]) (*HttpProxy, error) {
 	cfg := DefaultHttpProxyOptions()
 	for _, opt := range opts {
 		opt(cfg)
@@ -54,6 +55,7 @@ func NewHttpProxy(localAddr, remoteAddr string, opts ...Option[HttpProxyOptions]
 		return nil, err
 	}
 	proxy := HttpProxy{
+		log:              log.WithField("proxy", name),
 		server:           &http.Server{Addr: localAddr},
 		proxy:            httputil.NewSingleHostReverseProxy(remoteURL),
 		endpointHandlers: cfg.EndpointHandlers,
@@ -63,7 +65,7 @@ func NewHttpProxy(localAddr, remoteAddr string, opts ...Option[HttpProxyOptions]
 	var cacheOptions []ttlcache.Option[string, CachedResponse]
 	if cfg.CacheConfig != nil {
 		cacheOptions = append(cacheOptions, ttlcache.WithTTL[string, CachedResponse](cfg.CacheConfig.TTL))
-		if cfg.CacheConfig.DisableTouchOnHit {
+		if !cfg.CacheConfig.TouchOnHit {
 			cacheOptions = append(cacheOptions, ttlcache.WithDisableTouchOnHit[string, CachedResponse]())
 		}
 	} else {
@@ -76,11 +78,11 @@ func NewHttpProxy(localAddr, remoteAddr string, opts ...Option[HttpProxyOptions]
 
 func (p *HttpProxy) Start() error {
 	for _, eh := range p.endpointHandlers {
-		if err := eh.Handler.Start(); err != nil {
+		if err := eh.Handler.Start(p.log); err != nil {
 			return err
 		}
 	}
-	log.Infof("starting http proxy at %v", p.server.Addr)
+	p.log.WithField("address", p.server.Addr).Infof("starting http proxy")
 	go p.cache.Start()
 	return p.server.ListenAndServe()
 }
@@ -118,7 +120,7 @@ func (p *HttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 
 			default:
-				log.Errorf("unrecognized rule action %q", rule.Action)
+				p.log.Errorf("unrecognized rule action %q", rule.Action)
 			}
 		}
 	}
@@ -130,23 +132,36 @@ func (p *HttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *HttpProxy) allow(w http.ResponseWriter, r *http.Request, cache *RuleCache) {
-	log.Info("request allowed")
 	if cache != nil && cache.Enable {
 		hash, err := p.getHash(r)
 		if err != nil {
 			// We could not get the hash, but we can still try to serve the request
-			log.Errorf("error getting hash of request: %v", err)
+			p.log.Errorf("error getting hash of request: %v", err)
 			p.proxy.ServeHTTP(w, r)
 			return
 		}
 		if p.cache.Has(hash) {
+			p.log.WithFields(map[string]interface{}{
+				"path":   r.URL.Path,
+				"method": r.Method,
+				"cache":  "hit",
+			}).Info("request allowed")
 			p.cacheHit(w, r, hash)
 			return
 		} else {
+			p.log.WithFields(map[string]interface{}{
+				"path":   r.URL.Path,
+				"method": r.Method,
+				"cache":  "miss",
+			}).Info("request allowed")
 			p.cacheMiss(w, r, hash, cache)
 			return
 		}
 	}
+	p.log.WithFields(map[string]interface{}{
+		"path":   r.URL.Path,
+		"method": r.Method,
+	}).Info("request allowed")
 	p.proxy.ServeHTTP(w, r)
 }
 
@@ -159,7 +174,6 @@ func (p *HttpProxy) getHash(req *http.Request) (string, error) {
 }
 
 func (p *HttpProxy) cacheHit(w http.ResponseWriter, r *http.Request, requestHash string) {
-	log.Info("cache hit!")
 	item := p.cache.Get(requestHash)
 	w.Header().Add("Cache", "hit")
 	w.WriteHeader(item.Value().StatusCode)
@@ -167,14 +181,13 @@ func (p *HttpProxy) cacheHit(w http.ResponseWriter, r *http.Request, requestHash
 }
 
 func (p *HttpProxy) cacheMiss(w http.ResponseWriter, r *http.Request, requestHash string, cache *RuleCache) {
-	log.Info("cache miss")
 	w.Header().Add("Cache", "miss")
 	ww := WrapResponseWriter(w)
 	p.proxy.ServeHTTP(ww, r)
 
 	b, err := ww.GetWrittenBytes()
 	if err != nil {
-		log.Errorf("error getting data from upstream response: %v", err)
+		p.log.Errorf("error getting data from upstream response: %v", err)
 		return
 	}
 	p.cache.Set(requestHash, CachedResponse{
@@ -184,7 +197,10 @@ func (p *HttpProxy) cacheMiss(w http.ResponseWriter, r *http.Request, requestHas
 }
 
 func (p *HttpProxy) deny(w http.ResponseWriter, r *http.Request) {
-	log.Info("request denied")
+	p.log.WithFields(map[string]interface{}{
+		"path":   r.URL.Path,
+		"method": r.Method,
+	}).Info("request denied")
 	w.WriteHeader(http.StatusUnauthorized)
 	w.Write([]byte("unauthorized"))
 }

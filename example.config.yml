@@ -1,5 +1,5 @@
 node:
-  host: 10.0.28.28
+  host: 127.0.0.1
 
 cache:
   ttl: 5s
@@ -62,18 +62,19 @@ rpc:
 
   jsonrpc:
     rules:
-#      - priority: 9999
-#        action: deny
-#        methods: [ ]
+      - priority: 9999
+        action: deny
+        methods: [ ]
 
-      - priority:
-        action: allow
+      - action: allow
+        methods: [ "subscribe", "unsubscribe", "unsubscribe_all" ]
+
+      - action: allow
         methods: [ "status" ]
-#        cache:
-#          enable: true
+        cache:
+          enable: true
 
-      - priority:
-        action: allow
+      - action: allow
         methods: [ "abci_query" ]
         params:
           path: /cosmos.bank.v1beta1.Query/AllBalances
@@ -81,14 +82,12 @@ rpc:
           enable: true
           ttl: 2s
 
-      - priority:
-        action: allow
+      - action: allow
         methods: [ "abci_query" ]
         params:
           path: /nibiru.epochs.v1.Query/EpochInfos
 
-      - priority:
-        action: allow
+      - action: allow
         methods: [ "abci_query" ]
         params:
           path: /cosmos.distribution.v1beta1.Query/DelegationTotalRewards
