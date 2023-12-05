@@ -11,7 +11,6 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/mwitkow/grpc-proxy v0.0.0-20230212185441-f345521cb9c9
 	github.com/sirupsen/logrus v1.9.3
-	github.com/teambition/jsonrpc-go v0.0.0-20170418060308-ff2654212329
 	google.golang.org/grpc v1.47.0
 	gopkg.in/yaml.v3 v3.0.1
 	gotest.tools v2.2.0+incompatible
