@@ -1,11 +1,14 @@
 package firewall
 
 type SharedOptions struct {
-	CacheConfig *CacheGlobalConfig
+	CacheConfig    *CacheGlobalConfig
+	MetricsEnabled bool
 }
 
 func DefaultSharedOptions() *SharedOptions {
-	return &SharedOptions{}
+	return &SharedOptions{
+		MetricsEnabled: true,
+	}
 }
 
 type HttpProxyOptions struct {
@@ -22,10 +25,12 @@ func DefaultHttpProxyOptions() *HttpProxyOptions {
 }
 
 type GrpcProxyOptions struct {
+	*SharedOptions
 }
 
 func DefaultGrpcProxyOptions() *GrpcProxyOptions {
 	cfg := &GrpcProxyOptions{}
+	cfg.SharedOptions = DefaultSharedOptions()
 	return cfg
 }
 
@@ -57,6 +62,23 @@ func WithCacheConfig[T SharedOptions | HttpProxyOptions | JsonRpcHandlerOptions]
 			x.CacheConfig = c
 		case *JsonRpcHandlerOptions:
 			x.CacheConfig = c
+		default:
+			panic("unexpected use")
+		}
+	}
+}
+
+func WithMetricsEnabled[T SharedOptions | HttpProxyOptions | JsonRpcHandlerOptions | GrpcProxyOptions](b bool) Option[T] {
+	return func(opts *T) {
+		switch x := any(opts).(type) {
+		case *SharedOptions:
+			x.MetricsEnabled = b
+		case *HttpProxyOptions:
+			x.MetricsEnabled = b
+		case *JsonRpcHandlerOptions:
+			x.MetricsEnabled = b
+		case *GrpcProxyOptions:
+			x.MetricsEnabled = b
 		default:
 			panic("unexpected use")
 		}

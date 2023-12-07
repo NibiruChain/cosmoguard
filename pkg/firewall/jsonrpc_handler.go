@@ -7,20 +7,25 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 )
 
 type JsonRpcHandler struct {
-	cache         *ttlcache.Cache[uint64, *JsonRpcMsg]
-	defaultAction RuleAction
-	wsProxy       *JsonRpcWebSocketProxy
-	rules         []*JsonRpcRule
-	mu            sync.RWMutex
-	hash          *maphash.Hash
-	log           *log.Entry
+	cache            *ttlcache.Cache[uint64, *JsonRpcMsg]
+	defaultAction    RuleAction
+	wsProxy          *JsonRpcWebSocketProxy
+	rules            []*JsonRpcRule
+	mu               sync.RWMutex
+	hash             *maphash.Hash
+	log              *log.Entry
+	responseTimeHist *prometheus.HistogramVec
+	batchResTimeHist *prometheus.HistogramVec
 }
 
 func NewJsonRpcHandler(opts ...Option[JsonRpcHandlerOptions]) (*JsonRpcHandler, error) {
@@ -44,13 +49,42 @@ func NewJsonRpcHandler(opts ...Option[JsonRpcHandlerOptions]) (*JsonRpcHandler, 
 	handler.cache = ttlcache.New[uint64, *JsonRpcMsg](cacheOptions...)
 
 	if cfg.WebsocketEnabled {
-		handler.wsProxy = NewJsonRpcWebSocketProxy(cfg.WebsocketBackend, cfg.WebsocketConnections, handler.cache)
+		handler.wsProxy = NewJsonRpcWebSocketProxy(
+			cfg.WebsocketBackend,
+			cfg.WebsocketConnections,
+			handler.cache,
+			cfg.MetricsEnabled,
+		)
 	}
+
+	if cfg.MetricsEnabled {
+		handler.responseTimeHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "jsonrpc",
+			Name:      "request_duration_seconds",
+			Help:      "Histogram of response time for handler in seconds",
+			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		}, []string{"method", "path", "cache", "firewall"})
+		handler.batchResTimeHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "jsonrpc_batch",
+			Name:      "request_duration_seconds",
+			Help:      "Histogram of response time for handler in seconds",
+			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		}, []string{"requests", "allowed", "denied", "cache_hits", "cache_misses"})
+	}
+
 	return handler, nil
 }
 
 func (h *JsonRpcHandler) Start(logger *log.Entry) error {
 	h.log = logger.WithField("handler", "jsonrpc")
+
+	if h.responseTimeHist != nil {
+		prometheus.MustRegister(h.responseTimeHist)
+	}
+	if h.batchResTimeHist != nil {
+		prometheus.MustRegister(h.batchResTimeHist)
+	}
+
 	go h.cache.Start()
 	if h.wsProxy != nil {
 		go func() {
@@ -71,9 +105,10 @@ func (h *JsonRpcHandler) SetRules(rules []*JsonRpcRule, defaultAction RuleAction
 }
 
 func (h *JsonRpcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
+	start := time.Now()
 	h.log.Debug("serving http jsonrpc request")
 	if r.Method == http.MethodPost && r.URL.Path == "/" {
-		h.handleHttp(w, r, next)
+		h.handleHttp(w, r, next, start)
 		return
 	}
 
@@ -87,7 +122,8 @@ func (h *JsonRpcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next 
 	w.Write([]byte("unexpected request"))
 }
 
-func (h *JsonRpcHandler) handleHttp(w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
+func (h *JsonRpcHandler) handleHttp(w http.ResponseWriter, r *http.Request,
+	next func(http.ResponseWriter, *http.Request), startTime time.Time) {
 	var err error
 	r.Body = ReusableReader(r.Body)
 
@@ -101,13 +137,14 @@ func (h *JsonRpcHandler) handleHttp(w http.ResponseWriter, r *http.Request, next
 
 	req, requests, _ := ParseJsonRpcMessage(b)
 	if req != nil {
-		h.handleHttpSingle(req, w, r, next)
+		h.handleHttpSingle(req, w, r, next, startTime)
 	} else {
-		h.handleHttpBatch(requests, w, r, next)
+		h.handleHttpBatch(requests, w, r, next, startTime)
 	}
 }
 
-func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
+func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWriter, r *http.Request,
+	next func(http.ResponseWriter, *http.Request), startTime time.Time) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -119,31 +156,71 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 			case RuleActionAllow:
 				if rule.Cache != nil {
 					if h.cache.Has(hash) {
-						h.log.WithFields(map[string]interface{}{
-							"method": request.Method,
-							"params": request.Params,
-							"cache":  "hit",
-						}).Info("request allowed")
 						h.writeSingleResponse(w, h.cache.Get(hash).Value())
+						duration := time.Since(startTime)
+						if h.responseTimeHist != nil {
+							h.responseTimeHist.WithLabelValues(
+								request.Method,
+								request.MaybeGetPath(),
+								cacheHit,
+								RuleActionAllow).Observe(duration.Seconds())
+						}
+						h.log.WithFields(map[string]interface{}{
+							"method":   request.Method,
+							"path":     request.Params,
+							"cache":    cacheHit,
+							"duration": duration,
+						}).Info("request allowed")
 						return
 					}
-					h.log.WithFields(map[string]interface{}{
-						"method": request.Method,
-						"params": request.Params,
-						"cache":  "miss",
-					}).Info("request allowed")
 					h.getSingleUpstreamResponse(w, r, next, hash, rule.Cache)
+					duration := time.Since(startTime)
+					if h.responseTimeHist != nil {
+						h.responseTimeHist.WithLabelValues(
+							request.Method,
+							request.MaybeGetPath(),
+							cacheMiss,
+							RuleActionAllow).Observe(duration.Seconds())
+					}
+					h.log.WithFields(map[string]interface{}{
+						"method":   request.Method,
+						"params":   request.Params,
+						"cache":    cacheMiss,
+						"duration": duration,
+					}).Info("request allowed")
 					return
 				}
 				next(w, r)
+				duration := time.Since(startTime)
+				if h.responseTimeHist != nil {
+					h.responseTimeHist.WithLabelValues(
+						request.Method,
+						request.MaybeGetPath(),
+						cacheMiss,
+						RuleActionAllow).Observe(duration.Seconds())
+				}
+				h.log.WithFields(map[string]interface{}{
+					"method":   request.Method,
+					"params":   request.Params,
+					"duration": duration,
+				}).Info("request allowed")
 				return
 
 			case RuleActionDeny:
-				h.log.WithFields(map[string]interface{}{
-					"method": request.Method,
-					"params": request.Params,
-				}).Info("request denied")
 				h.writeSingleResponse(w, UnauthorizedResponse(request))
+				duration := time.Since(startTime)
+				if h.responseTimeHist != nil {
+					h.responseTimeHist.WithLabelValues(
+						request.Method,
+						request.MaybeGetPath(),
+						cacheMiss,
+						RuleActionDeny).Observe(duration.Seconds())
+				}
+				h.log.WithFields(map[string]interface{}{
+					"method":   request.Method,
+					"params":   request.Params,
+					"duration": duration,
+				}).Info("request denied")
 				return
 
 			default:
@@ -153,8 +230,34 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 	}
 	if h.defaultAction == RuleActionAllow {
 		next(w, r)
+		duration := time.Since(startTime)
+		if h.responseTimeHist != nil {
+			h.responseTimeHist.WithLabelValues(
+				request.Method,
+				request.MaybeGetPath(),
+				cacheMiss,
+				RuleActionAllow).Observe(duration.Seconds())
+		}
+		h.log.WithFields(map[string]interface{}{
+			"method":   request.Method,
+			"params":   request.Params,
+			"duration": duration,
+		}).Info("request allowed")
 	} else {
 		h.writeSingleResponse(w, UnauthorizedResponse(request))
+		duration := time.Since(startTime)
+		if h.responseTimeHist != nil {
+			h.responseTimeHist.WithLabelValues(
+				request.Method,
+				request.MaybeGetPath(),
+				cacheMiss,
+				RuleActionDeny).Observe(duration.Seconds())
+		}
+		h.log.WithFields(map[string]interface{}{
+			"method":   request.Method,
+			"params":   request.Params,
+			"duration": duration,
+		}).Info("request denied")
 	}
 }
 
@@ -181,24 +284,44 @@ func (h *JsonRpcHandler) writeSingleResponse(w http.ResponseWriter, res *JsonRpc
 	w.Write(b)
 }
 
-func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
+func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWriter, r *http.Request,
+	next func(http.ResponseWriter, *http.Request), startTime time.Time) {
 	var responses JsonRpcResponses
 
-	h.log.WithField("requests", len(requests)).Info("handling batch of requests")
+	var cacheHits, cacheMisses, allowed, denied int
+
 	h.mu.RLock()
 	for _, req := range requests {
+		if h.rules == nil || len(h.rules) == 0 {
+			cacheMisses++
+			if h.defaultAction == RuleActionAllow {
+				_ = responses.AddPendingOrLoadFromCache(req, nil, nil, 0)
+				allowed++
+			} else {
+				responses.Deny(req)
+				denied++
+			}
+			continue
+		}
 		for _, rule := range h.rules {
 			match := rule.Match(req)
 			if match {
 				switch rule.Action {
 				case RuleActionAllow:
+					allowed++
 					h.log.WithFields(map[string]interface{}{
 						"method": req.Method,
 						"params": req.Params,
 					}).Debug("request allowed")
-					responses.AddPendingOrLoadFromCache(req, h.cache, rule.Cache, req.Hash())
+					hit := responses.AddPendingOrLoadFromCache(req, h.cache, rule.Cache, req.Hash())
+					if hit {
+						cacheHits++
+					} else {
+						cacheMisses++
+					}
 
 				case RuleActionDeny:
+					denied++
 					h.log.WithFields(map[string]interface{}{
 						"method": req.Method,
 						"params": req.Params,
@@ -235,6 +358,24 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 		return
 	}
 	w.Write(b)
+	duration := time.Since(startTime)
+	if h.batchResTimeHist != nil {
+		h.batchResTimeHist.WithLabelValues(
+			strconv.Itoa(len(requests)),
+			strconv.Itoa(allowed),
+			strconv.Itoa(denied),
+			strconv.Itoa(cacheHits),
+			strconv.Itoa(cacheMisses),
+		).Observe(duration.Seconds())
+	}
+	h.log.WithFields(map[string]interface{}{
+		"requests":     len(requests),
+		"allowed":      allowed,
+		"denied":       denied,
+		"cache_hits":   cacheHits,
+		"cache_misses": cacheMisses,
+		"duration":     duration,
+	}).Info("processed batch of requests")
 }
 
 func (h *JsonRpcHandler) getResponsesFromUpstream(httpRequest *http.Request, requests JsonRpcMsgs, next func(http.ResponseWriter, *http.Request)) (JsonRpcMsgs, error) {

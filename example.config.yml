@@ -1,15 +1,33 @@
-node:
-  host: 127.0.0.1
+host: 0.0.0.0 # optional
+rpcPort: 26657 # optional
+lcdPort: 1317 # optional
+grpcPort: 9090 # optional
 
-cache:
-  ttl: 5s
+node: # optional, defaults to values below
+  host: 127.0.0.1 # optional
+  rpcPort: 26657 # optional
+  lcdPort: 1317 # optional
+  grpcPort: 9090 # optional
 
-lcd:
-  rules:
-    - priority: 9999
-      action: deny
-      paths: [ ]
-      methods: [ ]
+cache: # optional, defaults to values below
+  ttl: 5s # optional
+  touchOnHit: false # optional
+
+metrics: # optional, defaults to values below
+  enable: true # optional
+  port: 9001 # optional
+
+lcd: # optional, defaults to allow everything
+  default: allow # optional
+
+  rules: # default is empty
+    - priority: 9999 # optional, defaults to 1000
+      action: deny # either allow or deny
+      paths: [ ] # empty or nil means all
+      methods: [ ] # empty or nil means all
+      cache: # empty or nil means disabled
+        enable: false
+        ttl: 10s # optional, defaults to global .cache.ttl (5s if not specified)
 
     - priority: 1000
       action: allow
@@ -38,18 +56,25 @@ lcd:
       cache:
         enable: true
 
-grpc:
-  rules:
+grpc: # optional, defaults to allow everything
+  default: allow # optional
+
+  rules: # default is empty
     - action: allow
-      methods:
+      methods: # empty or nil means all
         - /cosmos.bank.v1beta1.Query/AllBalances
 
-rpc:
-  rules:
-    - priority: 9999
-      action: deny
-      path: [ ]
-      methods: [ ]
+rpc: # optional, defaults to allow everything
+  default: allow # optional
+
+  rules: # default is empty
+    - priority: 9999 # optional, defaults to 1000
+      action: deny # either allow or deny
+      paths: [ ] # empty or nil means all
+      methods: [ ] # empty or nil means all
+      cache: # empty or nil means disabled
+        enable: false
+        ttl: 10s # optional, defaults to global .cache.ttl (5s if not specified)
 
     - action: allow
       paths:
@@ -60,11 +85,20 @@ rpc:
         enable: true
         ttl: 2s
 
-  jsonrpc:
-    rules:
-      - priority: 9999
-        action: deny
-        methods: [ ]
+  jsonrpc: # optional, default is allow everything
+    default: allow
+
+    webSocketEnabled: true # optional, enabled by default
+    webSocketConnections: 10 # optional
+
+    rules: # default is empty
+      - priority: 9999 # optional, defaults to 1000
+        action: deny # either allow or deny
+        methods: [ ] # empty or nil means all
+        params: {} # empty or nil means all
+        cache: # empty or nil means disabled
+          enable: false
+          ttl: 10s # optional, defaults to global .cache.ttl (5s if not specified)
 
       - action: allow
         methods: [ "subscribe", "unsubscribe", "unsubscribe_all" ]

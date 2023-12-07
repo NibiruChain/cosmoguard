@@ -11,7 +11,9 @@ import (
 )
 
 const (
-	defaultCacheTTL = time.Minute
+	defaultCacheTTL = 5 * time.Second
+	cacheHit        = "hit"
+	cacheMiss       = "miss"
 )
 
 type Config struct {
@@ -24,6 +26,7 @@ type Config struct {
 	LCD      LcdConfig         `yaml:"lcd,omitempty"`
 	RPC      RpcConfig         `yaml:"rpc,omitempty"`
 	GRPC     GrpcConfig        `yaml:"grpc,omitempty"`
+	Metrics  MetricsConfig     `yaml:"metrics,omitempty"`
 }
 
 type NodeConfig struct {
@@ -34,7 +37,7 @@ type NodeConfig struct {
 }
 
 type CacheGlobalConfig struct {
-	TTL        time.Duration `yaml:"ttl,omitempty" default:"1m"`
+	TTL        time.Duration `yaml:"ttl,omitempty" default:"5s"`
 	TouchOnHit bool          `yaml:"touchOnHit,omitempty"`
 }
 
@@ -64,6 +67,11 @@ type JsonRpcConfig struct {
 type GrpcConfig struct {
 	Default RuleAction  `yaml:"default,omitempty" default:"allow"`
 	Rules   []*GrpcRule `yaml:"rules,omitempty"`
+}
+
+type MetricsConfig struct {
+	Enable bool `yaml:"enable" default:"true"`
+	Port   int  `yaml:"port,omitempty" default:"9001"`
 }
 
 func ReadConfigFromFile(path string) (*Config, error) {

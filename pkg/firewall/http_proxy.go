@@ -5,9 +5,12 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/NibiruChain/cosmos-firewall/pkg/util"
@@ -37,6 +40,7 @@ type HttpProxy struct {
 	endpointHandlers []*httpProxyEndpointHandler
 	mu               sync.RWMutex
 	log              *log.Entry
+	responseTimeHist *prometheus.HistogramVec
 }
 
 type CachedResponse struct {
@@ -73,10 +77,22 @@ func NewHttpProxy(name, localAddr, remoteAddr string, opts ...Option[HttpProxyOp
 	}
 	proxy.cache = ttlcache.New[string, CachedResponse](cacheOptions...)
 
+	if cfg.MetricsEnabled {
+		proxy.responseTimeHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: name,
+			Name:      "request_duration_seconds",
+			Help:      "Histogram of response time for handler in seconds",
+			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		}, []string{"method", "status_code", "cache", "firewall"})
+	}
+
 	return &proxy, nil
 }
 
 func (p *HttpProxy) Start() error {
+	if p.responseTimeHist != nil {
+		prometheus.MustRegister(p.responseTimeHist)
+	}
 	for _, eh := range p.endpointHandlers {
 		if err := eh.Handler.Start(p.log); err != nil {
 			return err
@@ -103,6 +119,7 @@ func (p *HttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	start := time.Now()
 	r.Body = ReusableReader(r.Body)
 
 	p.mu.RLock()
@@ -112,11 +129,11 @@ func (p *HttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if match {
 			switch rule.Action {
 			case RuleActionAllow:
-				p.allow(w, r, rule.Cache)
+				p.allow(w, r, rule.Cache, start)
 				return
 
 			case RuleActionDeny:
-				p.deny(w, r)
+				p.deny(w, r, start)
 				return
 
 			default:
@@ -125,44 +142,44 @@ func (p *HttpProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if p.defaultAction == RuleActionAllow {
-		p.allow(w, r, nil)
+		p.allow(w, r, nil, start)
 	} else {
-		p.deny(w, r)
+		p.deny(w, r, start)
 	}
 }
 
-func (p *HttpProxy) allow(w http.ResponseWriter, r *http.Request, cache *RuleCache) {
+func (p *HttpProxy) allow(w http.ResponseWriter, r *http.Request, cache *RuleCache, startTime time.Time) {
 	if cache != nil && cache.Enable {
 		hash, err := p.getHash(r)
 		if err != nil {
 			// We could not get the hash, but we can still try to serve the request
 			p.log.Errorf("error getting hash of request: %v", err)
-			p.proxy.ServeHTTP(w, r)
-			return
-		}
-		if p.cache.Has(hash) {
-			p.log.WithFields(map[string]interface{}{
-				"path":   r.URL.Path,
-				"method": r.Method,
-				"cache":  "hit",
-			}).Info("request allowed")
-			p.cacheHit(w, r, hash)
-			return
 		} else {
-			p.log.WithFields(map[string]interface{}{
-				"path":   r.URL.Path,
-				"method": r.Method,
-				"cache":  "miss",
-			}).Info("request allowed")
-			p.cacheMiss(w, r, hash, cache)
-			return
+			if p.cache.Has(hash) {
+				p.cacheHit(w, r, hash, startTime)
+				return
+			} else {
+				p.cacheMiss(w, r, hash, cache, startTime)
+				return
+			}
 		}
+
+	}
+	ww := WrapResponseWriter(w)
+	p.proxy.ServeHTTP(ww, r)
+	duration := time.Since(startTime)
+	if p.responseTimeHist != nil {
+		p.responseTimeHist.WithLabelValues(
+			r.Method,
+			strconv.Itoa(ww.GetStatusCode()),
+			cacheMiss,
+			RuleActionAllow).Observe(duration.Seconds())
 	}
 	p.log.WithFields(map[string]interface{}{
-		"path":   r.URL.Path,
-		"method": r.Method,
+		"path":     r.URL.Path,
+		"method":   r.Method,
+		"duration": duration,
 	}).Info("request allowed")
-	p.proxy.ServeHTTP(w, r)
 }
 
 func (p *HttpProxy) getHash(req *http.Request) (string, error) {
@@ -173,17 +190,45 @@ func (p *HttpProxy) getHash(req *http.Request) (string, error) {
 	return util.Sha256(req.Method + req.URL.String() + string(b)), nil
 }
 
-func (p *HttpProxy) cacheHit(w http.ResponseWriter, r *http.Request, requestHash string) {
+func (p *HttpProxy) cacheHit(w http.ResponseWriter, r *http.Request, requestHash string, startTime time.Time) {
 	item := p.cache.Get(requestHash)
-	w.Header().Add("Cache", "hit")
+	w.Header().Add("Cache", cacheHit)
 	w.WriteHeader(item.Value().StatusCode)
 	w.Write(item.Value().Data)
+	duration := time.Since(startTime)
+	if p.responseTimeHist != nil {
+		p.responseTimeHist.WithLabelValues(
+			r.Method,
+			strconv.Itoa(http.StatusOK),
+			cacheHit,
+			RuleActionAllow).Observe(duration.Seconds())
+	}
+	p.log.WithFields(map[string]interface{}{
+		"path":     r.URL.Path,
+		"method":   r.Method,
+		"cache":    cacheHit,
+		"duration": duration,
+	}).Info("request allowed")
 }
 
-func (p *HttpProxy) cacheMiss(w http.ResponseWriter, r *http.Request, requestHash string, cache *RuleCache) {
-	w.Header().Add("Cache", "miss")
+func (p *HttpProxy) cacheMiss(w http.ResponseWriter, r *http.Request, requestHash string, cache *RuleCache, startTime time.Time) {
+	w.Header().Add("Cache", cacheMiss)
 	ww := WrapResponseWriter(w)
 	p.proxy.ServeHTTP(ww, r)
+	duration := time.Since(startTime)
+	if p.responseTimeHist != nil {
+		p.responseTimeHist.WithLabelValues(
+			r.Method,
+			strconv.Itoa(ww.GetStatusCode()),
+			cacheMiss,
+			RuleActionAllow).Observe(duration.Seconds())
+	}
+	p.log.WithFields(map[string]interface{}{
+		"path":     r.URL.Path,
+		"method":   r.Method,
+		"cache":    cacheMiss,
+		"duration": duration,
+	}).Info("request allowed")
 
 	b, err := ww.GetWrittenBytes()
 	if err != nil {
@@ -196,11 +241,20 @@ func (p *HttpProxy) cacheMiss(w http.ResponseWriter, r *http.Request, requestHas
 	}, cache.TTL)
 }
 
-func (p *HttpProxy) deny(w http.ResponseWriter, r *http.Request) {
-	p.log.WithFields(map[string]interface{}{
-		"path":   r.URL.Path,
-		"method": r.Method,
-	}).Info("request denied")
+func (p *HttpProxy) deny(w http.ResponseWriter, r *http.Request, startTime time.Time) {
 	w.WriteHeader(http.StatusUnauthorized)
 	w.Write([]byte("unauthorized"))
+	duration := time.Since(startTime)
+	if p.responseTimeHist != nil {
+		p.responseTimeHist.WithLabelValues(
+			r.Method,
+			strconv.Itoa(http.StatusUnauthorized),
+			cacheMiss,
+			RuleActionDeny).Observe(duration.Seconds())
+	}
+	p.log.WithFields(map[string]interface{}{
+		"path":     r.URL.Path,
+		"method":   r.Method,
+		"duration": duration,
+	}).Info("request denied")
 }

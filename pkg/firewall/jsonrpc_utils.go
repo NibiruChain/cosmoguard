@@ -99,6 +99,16 @@ func (j *JsonRpcMsg) Marshal() ([]byte, error) {
 	return json.Marshal(j)
 }
 
+func (j *JsonRpcMsg) MaybeGetPath() string {
+	path := ""
+	if m, ok := j.Params.(map[string]interface{}); ok {
+		if v, ok := m["path"]; ok {
+			path, _ = v.(string)
+		}
+	}
+	return path
+}
+
 type JsonRpcMsgs []*JsonRpcMsg
 
 func (j JsonRpcMsgs) Marshal() ([]byte, error) {
@@ -176,7 +186,7 @@ func (l *JsonRpcResponses) GetFinal() JsonRpcMsgs {
 	return responses
 }
 
-func (l *JsonRpcResponses) AddPendingOrLoadFromCache(request *JsonRpcMsg, cache *ttlcache.Cache[uint64, *JsonRpcMsg], ruleCache *RuleCache, cacheKey uint64) {
+func (l *JsonRpcResponses) AddPendingOrLoadFromCache(request *JsonRpcMsg, cache *ttlcache.Cache[uint64, *JsonRpcMsg], ruleCache *RuleCache, cacheKey uint64) (hit bool) {
 	res := &JsonRpcResponse{
 		Request:  request,
 		Cache:    ruleCache,
@@ -184,11 +194,13 @@ func (l *JsonRpcResponses) AddPendingOrLoadFromCache(request *JsonRpcMsg, cache 
 	}
 	if res.Cache != nil {
 		if cache.Has(res.CacheKey) {
+			hit = true
 			res.Response = cache.Get(res.CacheKey).Value()
 			res.Response.ID = request.ID
 		}
 	}
 	*l = append(*l, res)
+	return
 }
 
 func (l *JsonRpcResponses) Set(requests, responses JsonRpcMsgs) {

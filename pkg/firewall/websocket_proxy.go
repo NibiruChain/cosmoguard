@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/jellydator/ttlcache/v3"
+	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -15,52 +17,67 @@ const (
 )
 
 type JsonRpcWebSocketProxy struct {
-	pool          *UpstreamConnectionPool
-	cache         *ttlcache.Cache[uint64, *JsonRpcMsg]
-	wsBackend     string
-	upgrader      *websocket.Upgrader
-	rules         []*JsonRpcRule
-	defaultAction RuleAction
-	mu            sync.RWMutex
-	log           *log.Entry
+	pool             *UpstreamConnectionPool
+	cache            *ttlcache.Cache[uint64, *JsonRpcMsg]
+	wsBackend        string
+	upgrader         *websocket.Upgrader
+	rules            []*JsonRpcRule
+	defaultAction    RuleAction
+	mu               sync.RWMutex
+	log              *log.Entry
+	responseTimeHist *prometheus.HistogramVec
 }
 
 type UpstreamConnection struct {
 	conn *websocket.Conn
 }
 
-func NewJsonRpcWebSocketProxy(backend string, connections int, cache *ttlcache.Cache[uint64, *JsonRpcMsg]) *JsonRpcWebSocketProxy {
-	return &JsonRpcWebSocketProxy{
+func NewJsonRpcWebSocketProxy(backend string, connections int, cache *ttlcache.Cache[uint64, *JsonRpcMsg], metricsEnabled bool) *JsonRpcWebSocketProxy {
+	proxy := &JsonRpcWebSocketProxy{
 		pool:      NewUpstreamConnectionPool(backend, connections),
 		wsBackend: backend,
 		upgrader:  &websocket.Upgrader{},
 		cache:     cache,
 	}
+
+	if metricsEnabled {
+		proxy.responseTimeHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "websocket_jsonrpc",
+			Name:      "request_duration_seconds",
+			Help:      "Histogram of response time for handler in seconds",
+			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		}, []string{"method", "path", "cache", "firewall"})
+	}
+
+	return proxy
 }
 
-func (h *JsonRpcWebSocketProxy) Start(log *log.Entry) error {
-	h.log = log.WithField("type", "websocket")
-	return h.pool.Start(h.log)
+func (p *JsonRpcWebSocketProxy) Start(log *log.Entry) error {
+	p.log = log.WithField("type", "websocket")
+	if p.responseTimeHist != nil {
+		prometheus.MustRegister(p.responseTimeHist)
+	}
+	return p.pool.Start(p.log)
 }
 
-func (h *JsonRpcWebSocketProxy) SetRules(rules []*JsonRpcRule, defaultAction RuleAction) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.rules = rules
-	h.defaultAction = defaultAction
+func (p *JsonRpcWebSocketProxy) SetRules(rules []*JsonRpcRule, defaultAction RuleAction) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.rules = rules
+	p.defaultAction = defaultAction
 }
 
-func (h *JsonRpcWebSocketProxy) HandleConnection(w http.ResponseWriter, r *http.Request) {
-	conn, err := h.upgrader.Upgrade(w, r, nil)
+func (p *JsonRpcWebSocketProxy) HandleConnection(w http.ResponseWriter, r *http.Request) {
+	conn, err := p.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		h.log.Errorf("error upgrading connection to websocket: %v", err)
+		p.log.Errorf("error upgrading connection to websocket: %v", err)
 		return
 	}
 	defer conn.Close()
 
 	writeCh := make(chan []byte)
 	defer close(writeCh)
-	defer h.pool.DisconnectChannel(writeCh)
+	defer p.pool.DisconnectChannel(writeCh)
 
 	go func(c *websocket.Conn) {
 		for {
@@ -69,7 +86,7 @@ func (h *JsonRpcWebSocketProxy) HandleConnection(w http.ResponseWriter, r *http.
 				return
 			}
 			if err := c.WriteMessage(websocket.TextMessage, msg); err != nil {
-				h.log.Errorf("error writing message: %v", err)
+				p.log.Errorf("error writing message: %v", err)
 			}
 		}
 	}(conn)
@@ -78,94 +95,148 @@ func (h *JsonRpcWebSocketProxy) HandleConnection(w http.ResponseWriter, r *http.
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				h.log.Errorf("error reading message: %v", err)
+				p.log.Errorf("error reading message: %v", err)
 			}
 			break
 		}
+		startTime := time.Now()
 		if string(message) == "" {
 			continue
 		}
 		request, _, err := ParseJsonRpcMessage(message)
 		if err != nil {
-			h.log.Errorf("error parsing jsonrpc from message: %v", err)
+			p.log.Errorf("error parsing jsonrpc from message: %v", err)
 			continue
 		}
 
 		if request == nil {
-			h.log.Errorf("bad request: %s", string(message))
+			p.log.Errorf("bad request: %s", string(message))
 			continue
 		}
 
-		if err := h.handleRequest(writeCh, request); err != nil {
-			h.log.Errorf("error handling request: %v", err)
+		if err := p.handleRequest(writeCh, request, startTime); err != nil {
+			p.log.Errorf("error handling request: %v", err)
 			continue
 		}
 	}
 }
 
-func (h *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *JsonRpcMsg) error {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *JsonRpcMsg, startTime time.Time) error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
-	for _, rule := range h.rules {
+	for _, rule := range p.rules {
 		hash := request.Hash()
 		match := rule.Match(request)
 		if match {
 			switch rule.Action {
 			case RuleActionAllow:
 				if rule.Cache != nil {
-					if h.cache.Has(hash) {
-						h.log.WithFields(map[string]interface{}{
-							"method": request.Method,
-							"params": request.Params,
-							"cache":  "hit",
+					if p.cache.Has(hash) {
+						if err := p.replyTo(writeCh, p.cache.Get(hash).Value()); err != nil {
+							return err
+						}
+						duration := time.Since(startTime)
+						p.log.WithFields(map[string]interface{}{
+							"method":   request.Method,
+							"params":   request.Params,
+							"cache":    cacheHit,
+							"duration": duration,
 						}).Info("request allowed")
-						return h.replyTo(writeCh, h.cache.Get(hash).Value())
+						if p.responseTimeHist != nil {
+							p.responseTimeHist.WithLabelValues(
+								request.Method,
+								request.MaybeGetPath(),
+								cacheHit,
+								RuleActionAllow,
+							).Observe(duration.Seconds())
+						}
+						return nil
 					}
-					h.log.WithFields(map[string]interface{}{
-						"method": request.Method,
-						"params": request.Params,
-						"cache":  "miss",
-					}).Info("request allowed")
-				} else {
-					h.log.WithFields(map[string]interface{}{
-						"method": request.Method,
-						"params": request.Params,
-					}).Info("request allowed")
 				}
-				response, err := h.pool.SubmitRequest(request, writeCh)
+				response, err := p.pool.SubmitRequest(request, writeCh)
 				if err != nil {
 					return err
 				}
-				if rule.Cache != nil {
-					h.cache.Set(hash, response, rule.Cache.TTL)
+				if err = p.replyTo(writeCh, response); err != nil {
+					return err
 				}
-				return h.replyTo(writeCh, response)
+				duration := time.Since(startTime)
+				p.log.WithFields(map[string]interface{}{
+					"method":   request.Method,
+					"params":   request.Params,
+					"cache":    cacheMiss,
+					"duration": duration,
+				}).Info("request allowed")
+				if p.responseTimeHist != nil {
+					p.responseTimeHist.WithLabelValues(
+						request.Method,
+						request.MaybeGetPath(),
+						cacheMiss,
+						RuleActionAllow,
+					).Observe(duration.Seconds())
+				}
+				if rule.Cache != nil {
+					p.cache.Set(hash, response, rule.Cache.TTL)
+				}
+				return nil
 
 			case RuleActionDeny:
-				h.log.WithFields(map[string]interface{}{
-					"method": request.Method,
-					"params": request.Params,
+				if err := p.replyTo(writeCh, UnauthorizedResponse(request)); err != nil {
+					return err
+				}
+				duration := time.Since(startTime)
+				p.log.WithFields(map[string]interface{}{
+					"method":   request.Method,
+					"params":   request.Params,
+					"duration": duration,
 				}).Info("request denied")
-				return h.replyTo(writeCh, UnauthorizedResponse(request))
+				if p.responseTimeHist != nil {
+					p.responseTimeHist.WithLabelValues(
+						request.Method,
+						request.MaybeGetPath(),
+						cacheMiss,
+						RuleActionDeny,
+					).Observe(duration.Seconds())
+				}
+				return nil
 
 			default:
-				h.log.Errorf("unrecognized rule action %q", rule.Action)
+				p.log.Errorf("unrecognized rule action %q", rule.Action)
 			}
 		}
 	}
-	if h.defaultAction == RuleActionAllow {
-		response, err := h.pool.SubmitRequest(request, writeCh)
+	if p.defaultAction == RuleActionAllow {
+		response, err := p.pool.SubmitRequest(request, writeCh)
 		if err != nil {
 			return err
 		}
-		return h.replyTo(writeCh, response)
+		if err = p.replyTo(writeCh, response); err != nil {
+			return err
+		}
 	} else {
-		return h.replyTo(writeCh, UnauthorizedResponse(request))
+		if err := p.replyTo(writeCh, UnauthorizedResponse(request)); err != nil {
+			return err
+		}
 	}
+	duration := time.Since(startTime)
+	p.log.WithFields(map[string]interface{}{
+		"method":   request.Method,
+		"params":   request.Params,
+		"duration": duration,
+	}).Infof("request %s", p.defaultAction)
+	if p.responseTimeHist != nil {
+		p.responseTimeHist.WithLabelValues(
+			request.Method,
+			request.MaybeGetPath(),
+			cacheMiss,
+			string(p.defaultAction),
+		).Observe(duration.Seconds())
+	}
+	return nil
 }
 
-func (h *JsonRpcWebSocketProxy) replyTo(writeCh chan []byte, response *JsonRpcMsg) error {
+func (p *JsonRpcWebSocketProxy) replyTo(writeCh chan []byte, response *JsonRpcMsg) error {
 	b, err := response.Marshal()
 	if err != nil {
 		return fmt.Errorf("error marshalling response: %v", err)

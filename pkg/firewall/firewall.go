@@ -2,10 +2,12 @@ package firewall
 
 import (
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -30,6 +32,7 @@ func New(path string) (*Firewall, error) {
 	grpcProxy, err := NewGrpcProxy("grpc",
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.GrpcPort),
 		fmt.Sprintf("%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.GrpcPort),
+		WithMetricsEnabled[GrpcProxyOptions](firewall.cfg.Metrics.Enable),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up grpc firewall proxy: %v", err)
@@ -40,6 +43,7 @@ func New(path string) (*Firewall, error) {
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.LcdPort),
 		fmt.Sprintf("http://%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.LcdPort),
 		WithCacheConfig[HttpProxyOptions](&firewall.cfg.Cache),
+		WithMetricsEnabled[HttpProxyOptions](firewall.cfg.Metrics.Enable),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up lcd firewall proxy: %v", err)
@@ -51,6 +55,7 @@ func New(path string) (*Firewall, error) {
 		WithWebSocketEnabled[JsonRpcHandlerOptions](firewall.cfg.RPC.WebSocketEnabled),
 		WithWebSocketBackend[JsonRpcHandlerOptions](fmt.Sprintf("%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.RpcPort)),
 		WithWebSocketConnections[JsonRpcHandlerOptions](firewall.cfg.RPC.WebSocketConnections),
+		WithMetricsEnabled[JsonRpcHandlerOptions](firewall.cfg.Metrics.Enable),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up jsonrpc handler: %v", err)
@@ -61,6 +66,7 @@ func New(path string) (*Firewall, error) {
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.RpcPort),
 		fmt.Sprintf("http://%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.RpcPort),
 		WithCacheConfig[HttpProxyOptions](&firewall.cfg.Cache),
+		WithMetricsEnabled[HttpProxyOptions](firewall.cfg.Metrics.Enable),
 		WithEndpointHandler[HttpProxyOptions]([]Endpoint{
 			{
 				Path:   "/",
@@ -82,6 +88,19 @@ func New(path string) (*Firewall, error) {
 
 func (f *Firewall) Start() error {
 	f.applyRules()
+	if f.cfg.Metrics.Enable {
+		go func() {
+			log.WithField("address", fmt.Sprintf("%s:%d", f.cfg.Host, f.cfg.Metrics.Port)).
+				Info("starting metrics server ")
+			http.Handle("/metrics", promhttp.Handler())
+			if err := http.ListenAndServe(
+				fmt.Sprintf("%s:%d", f.cfg.Host, f.cfg.Metrics.Port),
+				nil,
+			); err != nil {
+				log.Errorf("error starting metrics server: %v", err)
+			}
+		}()
+	}
 	go func() {
 		if err := f.rpcProxy.Start(); err != nil {
 			log.Errorf("error starting rpc proxy: %v", err)
