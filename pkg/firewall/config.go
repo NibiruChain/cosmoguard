@@ -18,9 +18,9 @@ const (
 
 type Config struct {
 	Host     string            `yaml:"host,omitempty" default:"0.0.0.0"`
-	RpcPort  int               `yaml:"rpcPort,omitempty" default:"26657"`
-	LcdPort  int               `yaml:"lcdPort,omitempty" default:"1317"`
-	GrpcPort int               `yaml:"grpcPort,omitempty" default:"9090"`
+	RpcPort  int               `yaml:"rpcPort,omitempty" default:"16657"`
+	LcdPort  int               `yaml:"lcdPort,omitempty" default:"11317"`
+	GrpcPort int               `yaml:"grpcPort,omitempty" default:"19090"`
 	Node     NodeConfig        `yaml:"node,omitempty"`
 	Cache    CacheGlobalConfig `yaml:"cache,omitempty"`
 	LCD      LcdConfig         `yaml:"lcd,omitempty"`
