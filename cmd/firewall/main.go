@@ -40,7 +40,7 @@ func main() {
 
 	f, err := firewall.New(configFile)
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
-	log.Panic(f.Start())
+	log.Fatal(f.Start())
 }
