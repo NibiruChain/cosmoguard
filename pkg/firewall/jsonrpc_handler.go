@@ -170,6 +170,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 							"path":     request.Params,
 							"cache":    cacheHit,
 							"duration": duration,
+							"source":   GetSourceIP(r),
 						}).Info("request allowed")
 						return
 					}
@@ -187,6 +188,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 						"params":   request.Params,
 						"cache":    cacheMiss,
 						"duration": duration,
+						"source":   GetSourceIP(r),
 					}).Info("request allowed")
 					return
 				}
@@ -203,6 +205,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 					"method":   request.Method,
 					"params":   request.Params,
 					"duration": duration,
+					"source":   GetSourceIP(r),
 				}).Info("request allowed")
 				return
 
@@ -220,6 +223,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 					"method":   request.Method,
 					"params":   request.Params,
 					"duration": duration,
+					"source":   GetSourceIP(r),
 				}).Info("request denied")
 				return
 
@@ -242,6 +246,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 			"method":   request.Method,
 			"params":   request.Params,
 			"duration": duration,
+			"source":   GetSourceIP(r),
 		}).Info("request allowed")
 	} else {
 		h.writeSingleResponse(w, UnauthorizedResponse(request))
@@ -257,6 +262,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 			"method":   request.Method,
 			"params":   request.Params,
 			"duration": duration,
+			"source":   GetSourceIP(r),
 		}).Info("request denied")
 	}
 }
@@ -375,6 +381,7 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 		"cache_hits":   cacheHits,
 		"cache_misses": cacheMisses,
 		"duration":     duration,
+		"source":       GetSourceIP(r),
 	}).Info("processed batch of requests")
 }
 

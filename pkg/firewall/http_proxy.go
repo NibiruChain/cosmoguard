@@ -179,6 +179,7 @@ func (p *HttpProxy) allow(w http.ResponseWriter, r *http.Request, cache *RuleCac
 		"path":     r.URL.Path,
 		"method":   r.Method,
 		"duration": duration,
+		"source":   GetSourceIP(r),
 	}).Info("request allowed")
 }
 
@@ -208,6 +209,7 @@ func (p *HttpProxy) cacheHit(w http.ResponseWriter, r *http.Request, requestHash
 		"method":   r.Method,
 		"cache":    cacheHit,
 		"duration": duration,
+		"source":   GetSourceIP(r),
 	}).Info("request allowed")
 }
 
@@ -228,6 +230,7 @@ func (p *HttpProxy) cacheMiss(w http.ResponseWriter, r *http.Request, requestHas
 		"method":   r.Method,
 		"cache":    cacheMiss,
 		"duration": duration,
+		"source":   GetSourceIP(r),
 	}).Info("request allowed")
 
 	b, err := ww.GetWrittenBytes()
@@ -256,5 +259,6 @@ func (p *HttpProxy) deny(w http.ResponseWriter, r *http.Request, startTime time.
 		"path":     r.URL.Path,
 		"method":   r.Method,
 		"duration": duration,
+		"source":   GetSourceIP(r),
 	}).Info("request denied")
 }

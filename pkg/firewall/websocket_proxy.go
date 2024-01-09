@@ -114,14 +114,14 @@ func (p *JsonRpcWebSocketProxy) HandleConnection(w http.ResponseWriter, r *http.
 			continue
 		}
 
-		if err := p.handleRequest(writeCh, request, startTime); err != nil {
+		if err := p.handleRequest(writeCh, request, startTime, GetSourceIP(r)); err != nil {
 			p.log.Errorf("error handling request: %v", err)
 			continue
 		}
 	}
 }
 
-func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *JsonRpcMsg, startTime time.Time) error {
+func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *JsonRpcMsg, startTime time.Time, source string) error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -142,6 +142,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 							"params":   request.Params,
 							"cache":    cacheHit,
 							"duration": duration,
+							"source":   source,
 						}).Info("request allowed")
 						if p.responseTimeHist != nil {
 							p.responseTimeHist.WithLabelValues(
@@ -167,6 +168,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 					"params":   request.Params,
 					"cache":    cacheMiss,
 					"duration": duration,
+					"source":   source,
 				}).Info("request allowed")
 				if p.responseTimeHist != nil {
 					p.responseTimeHist.WithLabelValues(
@@ -190,6 +192,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 					"method":   request.Method,
 					"params":   request.Params,
 					"duration": duration,
+					"source":   source,
 				}).Info("request denied")
 				if p.responseTimeHist != nil {
 					p.responseTimeHist.WithLabelValues(
@@ -224,6 +227,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 		"method":   request.Method,
 		"params":   request.Params,
 		"duration": duration,
+		"source":   source,
 	}).Infof("request %s", p.defaultAction)
 	if p.responseTimeHist != nil {
 		p.responseTimeHist.WithLabelValues(
