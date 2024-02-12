@@ -98,7 +98,9 @@ func (p *GrpcProxy) Handle(ctx context.Context, method string) (context.Context,
 	}
 
 	if p.defaultAction == RuleActionAllow {
+		p.log.WithField("method", method).Info("request allowed")
 		return ctx, p.client, nil
 	}
+	p.log.WithField("method", method).Info("request denied")
 	return ctx, nil, status.Errorf(codes.Unavailable, "Unauthorized")
 }
