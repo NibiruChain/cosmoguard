@@ -195,8 +195,7 @@ func (l *JsonRpcResponses) AddPendingOrLoadFromCache(request *JsonRpcMsg, cache 
 	if res.Cache != nil {
 		if cache.Has(res.CacheKey) {
 			hit = true
-			res.Response = cache.Get(res.CacheKey).Value()
-			res.Response.ID = request.ID
+			res.Response = cache.Get(res.CacheKey).Value().CloneWithID(request.ID)
 		}
 	}
 	*l = append(*l, res)

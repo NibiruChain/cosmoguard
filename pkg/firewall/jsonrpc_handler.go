@@ -156,7 +156,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 			case RuleActionAllow:
 				if rule.Cache != nil {
 					if h.cache.Has(hash) {
-						h.writeSingleResponse(w, h.cache.Get(hash).Value())
+						h.writeSingleResponse(w, h.cache.Get(hash).Value().CloneWithID(request.ID))
 						duration := time.Since(startTime)
 						if h.responseTimeHist != nil {
 							h.responseTimeHist.WithLabelValues(
