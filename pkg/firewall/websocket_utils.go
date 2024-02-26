@@ -190,7 +190,7 @@ func (u *UpstreamConnectionPool) handleSubscription(request *JsonRpcMsg, writeCh
 func (u *UpstreamConnectionPool) addSubscription(request *JsonRpcMsg, writeCh chan []byte) (*JsonRpcMsg, error) {
 	query, err := getSubscriptionQuery(request)
 	if err != nil {
-		return nil, err
+		return ErrorResponse(request, -100, err.Error(), nil), nil
 	}
 
 	var subscriptionID int
@@ -438,6 +438,12 @@ func (u *UpstreamConnectionPool) onNewMsg(msg *JsonRpcMsg) {
 }
 
 func getSubscriptionQuery(request *JsonRpcMsg) (string, error) {
+	if params, ok := request.Params.(map[string]interface{}); ok {
+		if query, ok := params["query"].(string); ok {
+			return query, nil
+		}
+	}
+
 	params, ok := request.Params.([]interface{})
 	if !ok {
 		return "", fmt.Errorf("bad params for subscribe")
