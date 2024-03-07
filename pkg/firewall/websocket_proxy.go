@@ -40,6 +40,11 @@ func NewJsonRpcWebSocketProxy(backend string, connections int, cache *ttlcache.C
 		cache:     cache,
 	}
 
+	// TODO: make list of allowed origins configurable
+	proxy.upgrader.CheckOrigin = func(r *http.Request) bool {
+		return true
+	}
+
 	if metricsEnabled {
 		proxy.responseTimeHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "websocket_jsonrpc",
