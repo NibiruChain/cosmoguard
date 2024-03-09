@@ -338,6 +338,10 @@ func (u *UpstreamConnectionPool) startSubscriptionRoutine(id int, subscriptionCh
 		u.log.WithField("subscriptionID", id).Info("broadcasting message to subscribers")
 		v.(*sync.Map).Range(func(key, value any) bool {
 			ch := key.(chan []byte)
+			if ch == nil {
+				u.log.Warn("not sending subscription message to closed connection")
+				return true
+			}
 			originID := value.(interface{})
 			b, _ := msg.CloneWithID(originID).Marshal()
 			ch <- b
@@ -379,6 +383,9 @@ func (u *UpstreamConnectionPool) DisconnectChannel(writeCh chan []byte) {
 			u.subscriptionUpstreamConnection.Delete(subID)
 		}
 	}
+
+	close(writeCh)
+	writeCh = nil
 }
 
 func (u *UpstreamConnectionPool) destroyUpstreamSubscription(subID int, query string) {

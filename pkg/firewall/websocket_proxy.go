@@ -81,7 +81,6 @@ func (p *JsonRpcWebSocketProxy) HandleConnection(w http.ResponseWriter, r *http.
 	defer conn.Close()
 
 	writeCh := make(chan []byte)
-	defer close(writeCh)
 	defer p.pool.DisconnectChannel(writeCh)
 
 	go func(c *websocket.Conn) {
