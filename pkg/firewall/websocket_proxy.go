@@ -80,7 +80,11 @@ func (p *JsonRpcWebSocketProxy) HandleConnection(w http.ResponseWriter, r *http.
 	}
 	defer conn.Close()
 
-	writeCh := make(chan []byte)
+	// TODO: refactor this
+	// Channel is buffered to allow a few more writes after closing. This is because the pool
+	// subscription handler does not know immediately when websocket is disconnected
+	writeCh := make(chan []byte, 100)
+	defer close(writeCh)
 	defer p.pool.DisconnectChannel(writeCh)
 
 	go func(c *websocket.Conn) {
