@@ -434,7 +434,6 @@ func (u *UpstreamConnectionPool) onNewMsg(msg *JsonRpcMsg) {
 		return
 	}
 	respCh <- msg
-
 }
 
 func getSubscriptionQuery(request *JsonRpcMsg) (string, error) {

@@ -21,7 +21,7 @@ type JsonRpcHandler struct {
 	defaultAction    RuleAction
 	wsProxy          *JsonRpcWebSocketProxy
 	rules            []*JsonRpcRule
-	mu               sync.RWMutex
+	mu               sync.RWMutex // Mutex to block readers when rules are being updated
 	hash             *maphash.Hash
 	log              *log.Entry
 	responseTimeHist *prometheus.HistogramVec
