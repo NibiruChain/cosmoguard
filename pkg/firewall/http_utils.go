@@ -88,3 +88,23 @@ func GetSourceIP(r *http.Request) string {
 	}
 	return IPAddress
 }
+
+func WriteData(w http.ResponseWriter, code int, data []byte, headers ...string) {
+	if len(headers)%2 == 0 {
+		for i := 0; i < len(headers); i += 2 {
+			w.Header().Set(headers[i], headers[i+1])
+		}
+	}
+	w.WriteHeader(code)
+	w.Write(data)
+}
+
+func WriteError(w http.ResponseWriter, code int, msg string, headers ...string) {
+	if len(headers)%2 == 0 {
+		for i := 0; i < len(headers); i += 2 {
+			w.Header().Set(headers[i], headers[i+1])
+		}
+	}
+	w.WriteHeader(code)
+	w.Write([]byte(msg))
+}

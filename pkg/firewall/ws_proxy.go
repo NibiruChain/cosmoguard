@@ -1,15 +1,17 @@
 package firewall
 
 import (
-	"fmt"
+	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/jellydator/ttlcache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/NibiruChain/cosmos-firewall/pkg/cache"
 )
 
 const (
@@ -17,30 +19,25 @@ const (
 )
 
 type JsonRpcWebSocketProxy struct {
-	pool             *UpstreamConnectionPool
-	cache            *ttlcache.Cache[uint64, *JsonRpcMsg]
+	broker           *Broker
+	cache            cache.Cache[uint64, *JsonRpcMsg]
 	wsBackend        string
 	upgrader         *websocket.Upgrader
 	rules            []*JsonRpcRule
 	defaultAction    RuleAction
-	mu               sync.RWMutex
+	rulesMutex       sync.RWMutex
 	log              *log.Entry
 	responseTimeHist *prometheus.HistogramVec
 }
 
-type UpstreamConnection struct {
-	conn *websocket.Conn
-}
-
-func NewJsonRpcWebSocketProxy(backend string, connections int, cache *ttlcache.Cache[uint64, *JsonRpcMsg], metricsEnabled bool) *JsonRpcWebSocketProxy {
+func NewJsonRpcWebSocketProxy(backend string, connections int, cache cache.Cache[uint64, *JsonRpcMsg], metricsEnabled bool) *JsonRpcWebSocketProxy {
 	proxy := &JsonRpcWebSocketProxy{
-		pool:      NewUpstreamConnectionPool(backend, connections),
+		broker:    NewBroker(backend, connections),
 		wsBackend: backend,
 		upgrader:  &websocket.Upgrader{},
 		cache:     cache,
 	}
 
-	// TODO: make list of allowed origins configurable
 	proxy.upgrader.CheckOrigin = func(r *http.Request) bool {
 		return true
 	}
@@ -57,17 +54,18 @@ func NewJsonRpcWebSocketProxy(backend string, connections int, cache *ttlcache.C
 	return proxy
 }
 
-func (p *JsonRpcWebSocketProxy) Start(log *log.Entry) error {
+func (p *JsonRpcWebSocketProxy) Run(log *log.Entry) error {
 	p.log = log.WithField("type", "websocket")
 	if p.responseTimeHist != nil {
 		prometheus.MustRegister(p.responseTimeHist)
 	}
-	return p.pool.Start(p.log)
+	return p.broker.Start(p.log)
 }
 
 func (p *JsonRpcWebSocketProxy) SetRules(rules []*JsonRpcRule, defaultAction RuleAction) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.rulesMutex.Lock()
+	defer p.rulesMutex.Unlock()
+
 	p.rules = rules
 	p.defaultAction = defaultAction
 }
@@ -78,60 +76,34 @@ func (p *JsonRpcWebSocketProxy) HandleConnection(w http.ResponseWriter, r *http.
 		p.log.Errorf("error upgrading connection to websocket: %v", err)
 		return
 	}
-	defer conn.Close()
 
-	// TODO: refactor this
-	// Channel is buffered to allow a few more writes after closing. This is because the pool
-	// subscription handler does not know immediately when websocket is disconnected
-	writeCh := make(chan []byte, 100)
-	defer close(writeCh)
-	defer p.pool.DisconnectChannel(writeCh)
-
-	go func(c *websocket.Conn) {
-		for {
-			msg, ok := <-writeCh
-			if !ok {
-				return
-			}
-			if err := c.WriteMessage(websocket.TextMessage, msg); err != nil {
-				p.log.Errorf("error writing message: %v", err)
-			}
-		}
-	}(conn)
+	client := NewJsonRpcWsClient(conn)
+	defer client.Close()
 
 	for {
-		_, message, err := conn.ReadMessage()
+		req, err := client.ReceiveMsg()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				p.log.Errorf("error reading message: %v", err)
+			if errors.Is(err, ErrClosed) {
+				p.log.Warnf("client disconnected")
+				client.Close()
+				break
 			}
-			break
-		}
-		startTime := time.Now()
-		if string(message) == "" {
-			continue
-		}
-		request, _, err := ParseJsonRpcMessage(message)
-		if err != nil {
-			p.log.Errorf("error parsing jsonrpc from message: %v", err)
+			p.log.Errorf("error reading message: %v", err)
 			continue
 		}
 
-		if request == nil {
-			p.log.Errorf("bad request: %s", string(message))
-			continue
-		}
-
-		if err := p.handleRequest(writeCh, request, startTime, GetSourceIP(r)); err != nil {
+		if err := p.handleRequest(client, req, GetSourceIP(r)); err != nil {
 			p.log.Errorf("error handling request: %v", err)
 			continue
 		}
 	}
 }
 
-func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *JsonRpcMsg, startTime time.Time, source string) error {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+func (p *JsonRpcWebSocketProxy) handleRequest(client *JsonRpcWsClient, request *JsonRpcMsg, source string) error {
+	p.rulesMutex.RLock()
+	defer p.rulesMutex.RUnlock()
+
+	startTime := time.Now()
 
 	for _, rule := range p.rules {
 		hash := request.Hash()
@@ -140,10 +112,19 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 			switch rule.Action {
 			case RuleActionAllow:
 				if rule.Cache != nil {
-					if p.cache.Has(hash) {
-						if err := p.replyTo(writeCh, p.cache.Get(hash).Value()); err != nil {
+					cached, err := p.cache.Has(context.Background(), hash)
+					if err != nil {
+						return err
+					}
+					if cached {
+						res, err := p.cache.Get(context.Background(), hash)
+						if err != nil {
 							return err
 						}
+						if err = client.SendMsg(res.CloneWithID(request.ID)); err != nil {
+							return err
+						}
+
 						duration := time.Since(startTime)
 						p.log.WithFields(map[string]interface{}{
 							"method":   request.Method,
@@ -152,6 +133,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 							"duration": duration,
 							"source":   source,
 						}).Info("request allowed")
+
 						if p.responseTimeHist != nil {
 							p.responseTimeHist.WithLabelValues(
 								request.Method,
@@ -163,13 +145,25 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 						return nil
 					}
 				}
-				response, err := p.pool.SubmitRequest(request, writeCh)
-				if err != nil {
+
+				var res *JsonRpcMsg
+				var err error
+				if hasSubscriptionMethod(request) {
+					res, err = p.broker.HandleSubscription(client, request)
+					if err != nil {
+						return err
+					}
+				} else {
+					res, err = p.broker.HandleRequest(request)
+					if err != nil {
+						return err
+					}
+				}
+
+				if err = client.SendMsg(res); err != nil {
 					return err
 				}
-				if err = p.replyTo(writeCh, response); err != nil {
-					return err
-				}
+
 				duration := time.Since(startTime)
 				p.log.WithFields(map[string]interface{}{
 					"method":   request.Method,
@@ -178,6 +172,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 					"duration": duration,
 					"source":   source,
 				}).Info("request allowed")
+
 				if p.responseTimeHist != nil {
 					p.responseTimeHist.WithLabelValues(
 						request.Method,
@@ -186,15 +181,19 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 						RuleActionAllow,
 					).Observe(duration.Seconds())
 				}
+
 				if rule.Cache != nil {
-					p.cache.Set(hash, response, rule.Cache.TTL)
+					if err = p.cache.Set(context.Background(), hash, res, rule.Cache.TTL); err != nil {
+						return err
+					}
 				}
 				return nil
 
 			case RuleActionDeny:
-				if err := p.replyTo(writeCh, UnauthorizedResponse(request)); err != nil {
+				if err := client.SendMsg(UnauthorizedResponse(request)); err != nil {
 					return err
 				}
+
 				duration := time.Since(startTime)
 				p.log.WithFields(map[string]interface{}{
 					"method":   request.Method,
@@ -202,6 +201,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 					"duration": duration,
 					"source":   source,
 				}).Info("request denied")
+
 				if p.responseTimeHist != nil {
 					p.responseTimeHist.WithLabelValues(
 						request.Method,
@@ -217,19 +217,32 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 			}
 		}
 	}
+
 	if p.defaultAction == RuleActionAllow {
-		response, err := p.pool.SubmitRequest(request, writeCh)
-		if err != nil {
+		var res *JsonRpcMsg
+		var err error
+		if hasSubscriptionMethod(request) {
+			res, err = p.broker.HandleSubscription(client, request)
+			if err != nil {
+				return err
+			}
+		} else {
+			res, err = p.broker.HandleRequest(request)
+			if err != nil {
+				return err
+			}
+		}
+
+		if err = client.SendMsg(res); err != nil {
 			return err
 		}
-		if err = p.replyTo(writeCh, response); err != nil {
-			return err
-		}
+
 	} else {
-		if err := p.replyTo(writeCh, UnauthorizedResponse(request)); err != nil {
+		if err := client.SendMsg(UnauthorizedResponse(request)); err != nil {
 			return err
 		}
 	}
+
 	duration := time.Since(startTime)
 	p.log.WithFields(map[string]interface{}{
 		"method":   request.Method,
@@ -237,6 +250,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 		"duration": duration,
 		"source":   source,
 	}).Infof("request %s", p.defaultAction)
+
 	if p.responseTimeHist != nil {
 		p.responseTimeHist.WithLabelValues(
 			request.Method,
@@ -245,14 +259,5 @@ func (p *JsonRpcWebSocketProxy) handleRequest(writeCh chan []byte, request *Json
 			string(p.defaultAction),
 		).Observe(duration.Seconds())
 	}
-	return nil
-}
-
-func (p *JsonRpcWebSocketProxy) replyTo(writeCh chan []byte, response *JsonRpcMsg) error {
-	b, err := response.Marshal()
-	if err != nil {
-		return fmt.Errorf("error marshalling response: %v", err)
-	}
-	writeCh <- b
 	return nil
 }

@@ -18,6 +18,7 @@ func NewMemoryCache[K comparable, V any](opts ...Option) (Cache[K, V], error) {
 	}
 
 	cacheOptions := []ttlcache.Option[K, V]{
+		ttlcache.WithDisableTouchOnHit[K, V](),
 		ttlcache.WithTTL[K, V](options.TTL),
 	}
 	c := MemoryCache[K, V]{
