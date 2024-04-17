@@ -12,6 +12,7 @@ import (
 
 const (
 	defaultCacheTTL = 5 * time.Second
+	cacheKey        = "Cache"
 	cacheHit        = "hit"
 	cacheMiss       = "miss"
 )
@@ -37,8 +38,8 @@ type NodeConfig struct {
 }
 
 type CacheGlobalConfig struct {
-	TTL        time.Duration `yaml:"ttl,omitempty" default:"5s"`
-	TouchOnHit bool          `yaml:"touchOnHit,omitempty"`
+	TTL   time.Duration `yaml:"ttl,omitempty" default:"5s"`
+	Redis *string       `yaml:"redis,omitempty"`
 }
 
 type RuleCache struct {

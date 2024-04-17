@@ -21,7 +21,7 @@ type GrpcProxy struct {
 	listener      net.Listener
 	server        *grpc.Server
 	client        *grpc.ClientConn
-	mu            sync.RWMutex
+	rulesMutex    sync.RWMutex
 	log           *log.Entry
 }
 
@@ -56,14 +56,15 @@ func NewGrpcProxy(name, localAddr, remoteAddr string, opts ...Option[GrpcProxyOp
 	return &proxy, nil
 }
 
-func (p *GrpcProxy) Start() error {
+func (p *GrpcProxy) Run() error {
 	p.log.WithField("address", p.listener.Addr().String()).Info("starting grpc proxy")
 	return p.server.Serve(p.listener)
 }
 
 func (p *GrpcProxy) SetRules(rules []*GrpcRule, defaultAction RuleAction) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.rulesMutex.Lock()
+	defer p.rulesMutex.Unlock()
+
 	p.rules = rules
 	p.defaultAction = defaultAction
 }
@@ -77,8 +78,8 @@ func (p *GrpcProxy) Handle(ctx context.Context, method string) (context.Context,
 		return outCtx, p.client, nil
 	}
 
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	p.rulesMutex.RLock()
+	defer p.rulesMutex.RUnlock()
 	for _, rule := range p.rules {
 		match := rule.Match(method)
 		if match {

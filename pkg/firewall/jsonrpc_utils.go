@@ -2,17 +2,18 @@ package firewall
 
 import (
 	"bytes"
-	"hash/maphash"
+	"context"
 	"net/http"
 	"strconv"
 
-	"github.com/jellydator/ttlcache/v3"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/segmentio/fasthash/fnv1a"
+
+	"github.com/NibiruChain/cosmos-firewall/pkg/cache"
 )
 
 var (
-	hasherSeed = maphash.MakeSeed()
-	json       = jsoniter.ConfigCompatibleWithStandardLibrary
+	json = jsoniter.ConfigCompatibleWithStandardLibrary
 )
 
 type JsonRpcError struct {
@@ -92,7 +93,7 @@ func (j *JsonRpcMsg) Hash() uint64 {
 	if err != nil {
 		return 0
 	}
-	return maphash.Bytes(hasherSeed, append([]byte(j.Method), b...))
+	return fnv1a.HashBytes64(append([]byte(j.Method), b...))
 }
 
 func (j *JsonRpcMsg) Marshal() ([]byte, error) {
@@ -186,20 +187,21 @@ func (l *JsonRpcResponses) GetFinal() JsonRpcMsgs {
 	return responses
 }
 
-func (l *JsonRpcResponses) AddPendingOrLoadFromCache(request *JsonRpcMsg, cache *ttlcache.Cache[uint64, *JsonRpcMsg], ruleCache *RuleCache, cacheKey uint64) (hit bool) {
+func (l *JsonRpcResponses) AddPending(request *JsonRpcMsg) {
 	res := &JsonRpcResponse{
-		Request:  request,
-		Cache:    ruleCache,
-		CacheKey: cacheKey,
-	}
-	if res.Cache != nil {
-		if cache.Has(res.CacheKey) {
-			hit = true
-			res.Response = cache.Get(res.CacheKey).Value().CloneWithID(request.ID)
-		}
+		Request: request,
 	}
 	*l = append(*l, res)
-	return
+}
+
+func (l *JsonRpcResponses) AddResponseWithCacheConfig(request, response *JsonRpcMsg, cacheKey uint64, cacheCfg *RuleCache) {
+	res := &JsonRpcResponse{
+		Request:  request,
+		Cache:    cacheCfg,
+		CacheKey: cacheKey,
+	}
+	res.Response = response.CloneWithID(request.ID)
+	*l = append(*l, res)
 }
 
 func (l *JsonRpcResponses) Set(requests, responses JsonRpcMsgs) {
@@ -230,10 +232,13 @@ func (l *JsonRpcResponses) Deny(request *JsonRpcMsg) {
 	*l = append(*l, res)
 }
 
-func (l *JsonRpcResponses) StoreInCache(cache *ttlcache.Cache[uint64, *JsonRpcMsg]) {
+func (l *JsonRpcResponses) StoreInCache(cache cache.Cache[uint64, *JsonRpcMsg]) error {
 	for _, r := range *l {
 		if r.Response != nil && r.Cache != nil && r.Cache.Enable {
-			cache.Set(r.CacheKey, r.Response, r.Cache.TTL)
+			if err := cache.Set(context.Background(), r.CacheKey, r.Response, r.Cache.TTL); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }

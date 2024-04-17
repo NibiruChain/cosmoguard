@@ -18,7 +18,7 @@ type Firewall struct {
 	rpcProxy       *HttpProxy
 	grpcProxy      *GrpcProxy
 	jsonRpcHandler *JsonRpcHandler
-	mu             sync.Mutex
+	configMutex    sync.Mutex
 }
 
 func New(path string) (*Firewall, error) {
@@ -29,6 +29,7 @@ func New(path string) (*Firewall, error) {
 		return nil, err
 	}
 
+	// Setup gRPC proxy
 	grpcProxy, err := NewGrpcProxy("grpc",
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.GrpcPort),
 		fmt.Sprintf("%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.GrpcPort),
@@ -39,6 +40,7 @@ func New(path string) (*Firewall, error) {
 	}
 	firewall.grpcProxy = grpcProxy
 
+	// Setup LCD proxy
 	lcdProxy, err := NewHttpProxy("lcd",
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.LcdPort),
 		fmt.Sprintf("http://%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.LcdPort),
@@ -50,6 +52,7 @@ func New(path string) (*Firewall, error) {
 	}
 	firewall.lcdProxy = lcdProxy
 
+	// Setup JSONRPC handler for RPC proxy
 	jsonRpcHandler, err := NewJsonRpcHandler(
 		WithCacheConfig[JsonRpcHandlerOptions](&firewall.cfg.Cache),
 		WithWebSocketEnabled[JsonRpcHandlerOptions](firewall.cfg.RPC.WebSocketEnabled),
@@ -62,6 +65,7 @@ func New(path string) (*Firewall, error) {
 	}
 	firewall.jsonRpcHandler = jsonRpcHandler
 
+	// Setup RPC proxy
 	rpcProxy, err := NewHttpProxy("rpc",
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.RpcPort),
 		fmt.Sprintf("http://%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.RpcPort),
@@ -73,7 +77,7 @@ func New(path string) (*Firewall, error) {
 				Method: "POST",
 			},
 			{
-				Path:   "/websocket",
+				Path:   websocketPath,
 				Method: "GET",
 			},
 		}, jsonRpcHandler),
@@ -86,8 +90,9 @@ func New(path string) (*Firewall, error) {
 	return firewall, nil
 }
 
-func (f *Firewall) Start() error {
+func (f *Firewall) Run() error {
 	f.applyRules()
+
 	if f.cfg.Metrics.Enable {
 		go func() {
 			log.WithField("address", fmt.Sprintf("%s:%d", f.cfg.Host, f.cfg.Metrics.Port)).
@@ -101,21 +106,25 @@ func (f *Firewall) Start() error {
 			}
 		}()
 	}
+
 	go func() {
-		if err := f.rpcProxy.Start(); err != nil {
-			log.Errorf("error starting rpc proxy: %v", err)
+		if err := f.rpcProxy.Run(); err != nil {
+			log.Errorf("error on rpc proxy: %v", err)
 		}
 	}()
+
 	go func() {
-		if err := f.grpcProxy.Start(); err != nil {
-			log.Errorf("error starting grpc proxy: %v", err)
+		if err := f.grpcProxy.Run(); err != nil {
+			log.Errorf("error on grpc proxy: %v", err)
 		}
 	}()
+
 	go func() {
-		if err := f.lcdProxy.Start(); err != nil {
-			log.Errorf("error starting lcd proxy: %v", err)
+		if err := f.lcdProxy.Run(); err != nil {
+			log.Errorf("error on lcd proxy: %v", err)
 		}
 	}()
+
 	return f.WatchConfigFile()
 }
 
@@ -150,16 +159,17 @@ func (f *Firewall) WatchConfigFile() error {
 }
 
 func (f *Firewall) loadConfig() error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	f.configMutex.Lock()
+	defer f.configMutex.Unlock()
+
 	var err error
 	f.cfg, err = ReadConfigFromFile(f.cfgFile)
 	return err
 }
 
 func (f *Firewall) applyRules() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	f.configMutex.Lock()
+	defer f.configMutex.Unlock()
 
 	log.Info("applying firewall rules")
 
