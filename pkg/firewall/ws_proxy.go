@@ -114,7 +114,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(client *JsonRpcWsClient, request *
 				if rule.Cache != nil {
 					cached, err := p.cache.Has(context.Background(), hash)
 					if err != nil {
-						return err
+						p.log.Errorf("error getting cached value: %v", err)
 					}
 					if cached {
 						res, err := p.cache.Get(context.Background(), hash)
@@ -184,7 +184,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(client *JsonRpcWsClient, request *
 
 				if rule.Cache != nil {
 					if err = p.cache.Set(context.Background(), hash, res, rule.Cache.TTL); err != nil {
-						return err
+						p.log.Errorf("error setting cache value: %v", err)
 					}
 				}
 				return nil

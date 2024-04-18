@@ -171,8 +171,7 @@ func (p *HttpProxy) allow(w http.ResponseWriter, r *http.Request, cache *RuleCac
 		} else {
 			cached, err := p.cache.Has(r.Context(), hash)
 			if err != nil {
-				p.log.Errorf("cache error: %v", err)
-				return
+				p.log.Errorf("error getting cached value: %v", err)
 			}
 			if cached {
 				p.cacheHit(w, r, hash, startTime)
@@ -273,7 +272,7 @@ func (p *HttpProxy) cacheMiss(w http.ResponseWriter, r *http.Request, requestHas
 		StatusCode: ww.GetStatusCode(),
 	}, cache.TTL)
 	if err != nil {
-		p.log.Errorf("error caching response: %v", err)
+		p.log.Errorf("error setting cache value: %v", err)
 	}
 }
 

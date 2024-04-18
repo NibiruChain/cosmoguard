@@ -169,7 +169,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 				if rule.Cache != nil {
 					cached, err := h.cache.Has(r.Context(), hash)
 					if err != nil {
-						h.log.Errorf("cache error: %v", err)
+						h.log.Errorf("error getting cached value: %v", err)
 					}
 					if cached {
 						res, err := h.cache.Get(r.Context(), hash)
@@ -314,7 +314,7 @@ func (h *JsonRpcHandler) getSingleUpstreamResponse(w http.ResponseWriter, r *htt
 	res, _, _ := ParseJsonRpcMessage(b)
 
 	if err = h.cache.Set(r.Context(), hash, res, cache.TTL); err != nil {
-		h.log.Errorf("error caching response: %v", err)
+		h.log.Errorf("error setting cache value: %v", err)
 	}
 }
 
@@ -360,7 +360,7 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 
 					cached, err := h.cache.Has(r.Context(), req.Hash())
 					if err != nil {
-						h.log.Errorf("error checking for cached response: %v", err)
+						h.log.Errorf("error getting cached value: %v", err)
 						responses.AddPending(req)
 						cacheMisses++
 						continue
