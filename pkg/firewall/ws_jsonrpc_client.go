@@ -13,10 +13,12 @@ var (
 )
 
 type JsonRpcWsClient struct {
-	conn       *websocket.Conn
-	closed     bool
-	writeMutex sync.Mutex
-	readMutex  sync.Mutex
+	conn   *websocket.Conn
+	closed bool
+
+	closedMux sync.RWMutex
+	writeMux  sync.Mutex
+	readMux   sync.Mutex
 
 	onDisconnect func(client *JsonRpcWsClient)
 }
@@ -28,14 +30,36 @@ func NewJsonRpcWsClient(conn *websocket.Conn) *JsonRpcWsClient {
 	}
 }
 
+func (c *JsonRpcWsClient) readMessage() (int, []byte, error) {
+	c.readMux.Lock()
+	defer c.readMux.Unlock()
+	return c.conn.ReadMessage()
+}
+
+func (c *JsonRpcWsClient) writeMessage(messageType int, data []byte) error {
+	c.writeMux.Lock()
+	defer c.writeMux.Unlock()
+	return c.conn.WriteMessage(messageType, data)
+}
+
+func (c *JsonRpcWsClient) setClosed() {
+	c.closedMux.Lock()
+	defer c.closedMux.Unlock()
+	c.closed = true
+}
+
+func (c *JsonRpcWsClient) IsClosed() bool {
+	c.closedMux.RLock()
+	defer c.closedMux.RUnlock()
+	return c.closed
+}
+
 func (c *JsonRpcWsClient) ReceiveMsg() (*JsonRpcMsg, error) {
-	if c.closed {
+	if c.IsClosed() {
 		return nil, ErrClosed
 	}
 
-	c.readMutex.Lock()
-	_, message, err := c.conn.ReadMessage()
-	c.readMutex.Unlock()
+	_, message, err := c.readMessage()
 
 	if err != nil {
 		if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -62,10 +86,7 @@ func (c *JsonRpcWsClient) ReceiveMsg() (*JsonRpcMsg, error) {
 }
 
 func (c *JsonRpcWsClient) SendMsg(msg *JsonRpcMsg) error {
-	if c.closed || c.conn == nil {
-		if c.conn == nil {
-			c.closed = true
-		}
+	if c.IsClosed() {
 		return ErrClosed
 	}
 
@@ -74,13 +95,11 @@ func (c *JsonRpcWsClient) SendMsg(msg *JsonRpcMsg) error {
 		return fmt.Errorf("error encoding msg: %v", err)
 	}
 
-	c.writeMutex.Lock()
-	defer c.writeMutex.Unlock()
-	return c.conn.WriteMessage(websocket.TextMessage, b)
+	return c.writeMessage(websocket.TextMessage, b)
 }
 
 func (c *JsonRpcWsClient) Close() error {
-	if c.closed {
+	if c.IsClosed() {
 		return ErrClosed
 	}
 
@@ -88,22 +107,15 @@ func (c *JsonRpcWsClient) Close() error {
 		c.onDisconnect(c)
 	}
 
-	c.writeMutex.Lock()
-	defer c.writeMutex.Unlock()
+	c.writeMux.Lock()
+	defer c.writeMux.Unlock()
 
-	if c.conn != nil {
-		if err := c.conn.Close(); err != nil {
-			return err
-		}
+	if err := c.conn.Close(); err != nil {
+		return err
 	}
 
-	c.closed = true
-	c.conn = nil
+	c.setClosed()
 	return nil
-}
-
-func (c *JsonRpcWsClient) IsClosed() bool {
-	return c.closed
 }
 
 func (c *JsonRpcWsClient) SetOnDisconnectCallback(f func(client *JsonRpcWsClient)) {

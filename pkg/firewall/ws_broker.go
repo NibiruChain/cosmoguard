@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"fmt"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 
@@ -9,10 +10,11 @@ import (
 )
 
 type Broker struct {
-	IdGen *util.UniqueID
-	pool  *UpstreamPool
-	log   *log.Entry
-	sm    *SubscriptionManager
+	IdGen          *util.UniqueID
+	pool           *UpstreamPool
+	log            *log.Entry
+	sm             *SubscriptionManager
+	upstreamSubMux sync.Mutex
 }
 
 func NewBroker(backend string, n int) *Broker {
@@ -63,6 +65,9 @@ func (b *Broker) addSubscription(client *JsonRpcWsClient, msg *JsonRpcMsg) (*Jso
 		return ErrorResponse(msg, -100, err.Error(), nil), nil
 	}
 
+	b.upstreamSubMux.Lock()
+	defer b.upstreamSubMux.Unlock()
+
 	id, exists := b.sm.GetSubscriptionID(query)
 	if !exists {
 		b.log.WithField("client", client).Debug("upstream subscription does not exist")
@@ -111,6 +116,9 @@ func (b *Broker) removeSubscription(client *JsonRpcWsClient, msg *JsonRpcMsg) (*
 		"client": client,
 	}).Debug("unsubscribed client")
 
+	b.upstreamSubMux.Lock()
+	defer b.upstreamSubMux.Unlock()
+
 	if b.sm.SubscriptionEmpty(id) {
 		if err = b.pool.Unsubscribe(query); err != nil {
 			return nil, err
@@ -128,6 +136,9 @@ func (b *Broker) removeSubscription(client *JsonRpcWsClient, msg *JsonRpcMsg) (*
 
 func (b *Broker) removeAllSubscriptions(client *JsonRpcWsClient, msg *JsonRpcMsg) (*JsonRpcMsg, error) {
 	b.log.WithField("client", client).Debug("unsubscribing client from all subscriptions")
+
+	b.upstreamSubMux.Lock()
+	defer b.upstreamSubMux.Unlock()
 
 	for _, subscriptionID := range b.sm.GetSubscriptions(client) {
 		b.log.WithField("ID", subscriptionID).Debug("unsubscribing client")
