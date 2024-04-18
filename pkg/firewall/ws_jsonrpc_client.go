@@ -62,7 +62,10 @@ func (c *JsonRpcWsClient) ReceiveMsg() (*JsonRpcMsg, error) {
 }
 
 func (c *JsonRpcWsClient) SendMsg(msg *JsonRpcMsg) error {
-	if c.closed {
+	if c.closed || c.conn == nil {
+		if c.conn == nil {
+			c.closed = true
+		}
 		return ErrClosed
 	}
 
@@ -88,9 +91,12 @@ func (c *JsonRpcWsClient) Close() error {
 	c.writeMutex.Lock()
 	defer c.writeMutex.Unlock()
 
-	if err := c.conn.Close(); err != nil {
-		return err
+	if c.conn != nil {
+		if err := c.conn.Close(); err != nil {
+			return err
+		}
 	}
+
 	c.closed = true
 	c.conn = nil
 	return nil
