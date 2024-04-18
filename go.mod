@@ -1,6 +1,6 @@
 module github.com/NibiruChain/cosmos-firewall
 
-go 1.21.4
+go 1.22
 
 require (
 	github.com/alicebob/miniredis/v2 v2.32.1
