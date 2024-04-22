@@ -62,7 +62,12 @@ func (c *JsonRpcWsClient) ReceiveMsg() (*JsonRpcMsg, error) {
 	_, message, err := c.readMessage()
 
 	if err != nil {
-		if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNoStatusReceived) {
+		if websocket.IsUnexpectedCloseError(err,
+			websocket.CloseNormalClosure,
+			websocket.CloseGoingAway,
+			websocket.CloseAbnormalClosure,
+			websocket.CloseNoStatusReceived,
+		) {
 			return nil, err
 		}
 		_ = c.Close()
