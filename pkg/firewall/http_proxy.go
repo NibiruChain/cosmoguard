@@ -267,12 +267,14 @@ func (p *HttpProxy) cacheMiss(w http.ResponseWriter, r *http.Request, requestHas
 		return
 	}
 
-	err = p.cache.Set(r.Context(), requestHash, CachedResponse{
-		Data:       b,
-		StatusCode: ww.GetStatusCode(),
-	}, cache.TTL)
-	if err != nil {
-		p.log.Errorf("error setting cache value: %v", err)
+	if ww.GetStatusCode() > 0 {
+		err = p.cache.Set(r.Context(), requestHash, CachedResponse{
+			Data:       b,
+			StatusCode: ww.GetStatusCode(),
+		}, cache.TTL)
+		if err != nil {
+			p.log.Errorf("error setting cache value: %v", err)
+		}
 	}
 }
 
