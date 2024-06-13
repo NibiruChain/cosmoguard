@@ -39,6 +39,8 @@ type JsonRpcHandlerOptions struct {
 	WebsocketBackend     string
 	WebsocketEnabled     bool
 	WebsocketConnections int
+	WebsocketPath        string
+	UpstreamConstructor  UpstreamConnManagerConstructor
 }
 
 func DefaultJsonRpcHandlerOptions() *JsonRpcHandlerOptions {
@@ -46,6 +48,8 @@ func DefaultJsonRpcHandlerOptions() *JsonRpcHandlerOptions {
 		WebsocketBackend:     "localhost:26657",
 		WebsocketEnabled:     true,
 		WebsocketConnections: 10,
+		WebsocketPath:        defaultWebsocketPath,
+		UpstreamConstructor:  CosmosUpstreamConnManager,
 	}
 	cfg.SharedOptions = DefaultSharedOptions()
 	return cfg
@@ -126,6 +130,28 @@ func WithWebSocketConnections[T JsonRpcHandlerOptions](v int) Option[T] {
 		switch x := any(opts).(type) {
 		case *JsonRpcHandlerOptions:
 			x.WebsocketConnections = v
+		default:
+			panic("unexpected use")
+		}
+	}
+}
+
+func WithWebSocketPath[T JsonRpcHandlerOptions](path string) Option[T] {
+	return func(opts *T) {
+		switch x := any(opts).(type) {
+		case *JsonRpcHandlerOptions:
+			x.WebsocketPath = path
+		default:
+			panic("unexpected use")
+		}
+	}
+}
+
+func WithUpstreamManager[T JsonRpcHandlerOptions](constructor UpstreamConnManagerConstructor) Option[T] {
+	return func(opts *T) {
+		switch x := any(opts).(type) {
+		case *JsonRpcHandlerOptions:
+			x.UpstreamConstructor = constructor
 		default:
 			panic("unexpected use")
 		}

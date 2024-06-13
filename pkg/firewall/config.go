@@ -11,30 +11,35 @@ import (
 )
 
 const (
-	defaultCacheTTL = 5 * time.Second
-	cacheKey        = "Cache"
-	cacheHit        = "hit"
-	cacheMiss       = "miss"
+	cacheKey  = "Cache"
+	cacheHit  = "hit"
+	cacheMiss = "miss"
 )
 
 type Config struct {
-	Host     string            `yaml:"host,omitempty" default:"0.0.0.0"`
-	RpcPort  int               `yaml:"rpcPort,omitempty" default:"16657"`
-	LcdPort  int               `yaml:"lcdPort,omitempty" default:"11317"`
-	GrpcPort int               `yaml:"grpcPort,omitempty" default:"19090"`
-	Node     NodeConfig        `yaml:"node,omitempty"`
-	Cache    CacheGlobalConfig `yaml:"cache,omitempty"`
-	LCD      LcdConfig         `yaml:"lcd,omitempty"`
-	RPC      RpcConfig         `yaml:"rpc,omitempty"`
-	GRPC     GrpcConfig        `yaml:"grpc,omitempty"`
-	Metrics  MetricsConfig     `yaml:"metrics,omitempty"`
+	Host         string            `yaml:"host,omitempty" default:"0.0.0.0"`
+	RpcPort      int               `yaml:"rpcPort,omitempty" default:"16657"`
+	LcdPort      int               `yaml:"lcdPort,omitempty" default:"11317"`
+	GrpcPort     int               `yaml:"grpcPort,omitempty" default:"19090"`
+	EnableEvm    bool              `yaml:"enableEvm,omitempty" default:"false"`
+	EvmRpcPort   int               `yaml:"evmRpcPort,omitempty" default:"18545"`
+	EvmRpcWsPort int               `yaml:"evmRpcWsPort,omitempty" default:"18546"`
+	Node         NodeConfig        `yaml:"node,omitempty"`
+	Cache        CacheGlobalConfig `yaml:"cache,omitempty"`
+	LCD          LcdConfig         `yaml:"lcd,omitempty"`
+	RPC          RpcConfig         `yaml:"rpc,omitempty"`
+	GRPC         GrpcConfig        `yaml:"grpc,omitempty"`
+	EVM          EvmConfig         `yaml:"evm,omitempty"`
+	Metrics      MetricsConfig     `yaml:"metrics,omitempty"`
 }
 
 type NodeConfig struct {
-	Host     string `yaml:"host,omitempty" default:"127.0.0.1"`
-	RpcPort  int    `yaml:"rpcPort,omitempty" default:"26657"`
-	LcdPort  int    `yaml:"lcdPort,omitempty" default:"1317"`
-	GrpcPort int    `yaml:"grpcPort,omitempty" default:"9090"`
+	Host         string `yaml:"host,omitempty" default:"127.0.0.1"`
+	RpcPort      int    `yaml:"rpcPort,omitempty" default:"26657"`
+	LcdPort      int    `yaml:"lcdPort,omitempty" default:"1317"`
+	GrpcPort     int    `yaml:"grpcPort,omitempty" default:"9090"`
+	EvmRpcPort   int    `yaml:"evmRpcPort,omitempty" default:"8545"`
+	EvmRpcWsPort int    `yaml:"evmRpcWsPort,omitempty" default:"8546"`
 }
 
 type CacheGlobalConfig struct {
@@ -73,6 +78,22 @@ type GrpcConfig struct {
 type MetricsConfig struct {
 	Enable bool `yaml:"enable" default:"true"`
 	Port   int  `yaml:"port,omitempty" default:"9001"`
+}
+
+type EvmConfig struct {
+	RPC EvmRpcConfig   `yaml:"rpc,omitempty"`
+	WS  EvmRpcWsConfig `yaml:"ws,omitempty"`
+}
+
+type EvmRpcConfig struct {
+	Default RuleAction     `yaml:"default,omitempty" default:"allow"`
+	Rules   []*JsonRpcRule `yaml:"rules,omitempty"`
+}
+
+type EvmRpcWsConfig struct {
+	Default              RuleAction     `yaml:"default,omitempty" default:"allow"`
+	Rules                []*JsonRpcRule `yaml:"rules,omitempty"`
+	WebSocketConnections int            `yaml:"webSocketConnections,omitempty" default:"10"`
 }
 
 func ReadConfigFromFile(path string) (*Config, error) {
@@ -118,6 +139,24 @@ func ReadConfigFromFile(path string) (*Config, error) {
 			return cfg.RPC.JsonRpc.Rules[i].Priority < cfg.RPC.JsonRpc.Rules[j].Priority
 		})
 		for _, rule := range cfg.RPC.JsonRpc.Rules {
+			rule.Compile()
+		}
+	}
+
+	if cfg.EVM.RPC.Rules != nil {
+		sort.Slice(cfg.EVM.RPC.Rules, func(i, j int) bool {
+			return cfg.EVM.RPC.Rules[i].Priority < cfg.EVM.RPC.Rules[j].Priority
+		})
+		for _, rule := range cfg.EVM.RPC.Rules {
+			rule.Compile()
+		}
+	}
+
+	if cfg.EVM.WS.Rules != nil {
+		sort.Slice(cfg.EVM.WS.Rules, func(i, j int) bool {
+			return cfg.EVM.WS.Rules[i].Priority < cfg.EVM.WS.Rules[j].Priority
+		})
+		for _, rule := range cfg.EVM.WS.Rules {
 			rule.Compile()
 		}
 	}

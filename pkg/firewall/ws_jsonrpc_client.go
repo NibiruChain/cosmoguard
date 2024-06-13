@@ -23,6 +23,10 @@ type JsonRpcWsClient struct {
 	onDisconnect func(client *JsonRpcWsClient)
 }
 
+func (c *JsonRpcWsClient) String() string {
+	return c.conn.RemoteAddr().String()
+}
+
 func NewJsonRpcWsClient(conn *websocket.Conn) *JsonRpcWsClient {
 	return &JsonRpcWsClient{
 		conn:   conn,

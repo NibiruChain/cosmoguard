@@ -56,11 +56,18 @@ func (j *JsonRpcMsg) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	i, err := strconv.Atoi(string(dest.ID))
-	if err == nil {
-		j.ID = i
+	if len(dest.ID) >= 1 {
+		i, err := strconv.Atoi(string(dest.ID))
+		if err == nil {
+			j.ID = i
+		} else {
+			j.ID, err = strconv.Unquote(string(dest.ID))
+			if err != nil {
+				return err
+			}
+		}
 	} else {
-		j.ID = string(dest.ID)
+		j.ID = nil
 	}
 
 	return nil
@@ -142,6 +149,14 @@ func EmptyResult(req *JsonRpcMsg) *JsonRpcMsg {
 	return &JsonRpcMsg{
 		Version: "2.0",
 		Result:  make(map[string]string),
+		ID:      req.ID,
+	}
+}
+
+func WithResult(req *JsonRpcMsg, result interface{}) *JsonRpcMsg {
+	return &JsonRpcMsg{
+		Version: "2.0",
+		Result:  result,
 		ID:      req.ID,
 	}
 }

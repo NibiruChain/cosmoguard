@@ -17,12 +17,12 @@ type Broker struct {
 	upstreamSubMux sync.Mutex
 }
 
-func NewBroker(backend string, n int) *Broker {
+func NewBroker(backend, path string, n int, upstreamConstructor UpstreamConnManagerConstructor) *Broker {
 	b := Broker{
 		IdGen: &util.UniqueID{},
 		sm:    NewSubscriptionManager(),
 	}
-	b.pool = NewUpstreamPool(backend, n, b.onSubscriptionMessage)
+	b.pool = NewUpstreamPool(backend, path, n, b.onSubscriptionMessage, upstreamConstructor)
 	return &b
 }
 
@@ -44,14 +44,37 @@ func (b *Broker) HandleSubscription(client *JsonRpcWsClient, msg *JsonRpcMsg) (*
 	client.SetOnDisconnectCallback(b.onClientDisconnect)
 
 	switch msg.Method {
-	case methodSubscribe:
-		return b.addSubscription(client, msg)
+	case methodSubscribeCosmos:
+		_, err := b.addSubscription(client, msg)
+		if err != nil {
+			return ErrorResponse(msg, -100, err.Error(), nil), nil
+		}
+		return EmptyResult(msg), nil
 
-	case methodUnsubscribe:
-		return b.removeSubscription(client, msg)
+	case methodUnsubscribeCosmos:
+		if err := b.removeSubscription(client, msg); err != nil {
+			return ErrorResponse(msg, -100, err.Error(), nil), nil
+		}
+		return EmptyResult(msg), nil
 
-	case methodUnsubscribeAll:
-		return b.removeAllSubscriptions(client, msg)
+	case methodUnsubscribeAllCosmos:
+		if err := b.removeAllSubscriptions(client); err != nil {
+			return nil, err
+		}
+		return EmptyResult(msg), nil
+
+	case methodSubscribeEth:
+		id, err := b.addSubscription(client, msg)
+		if err != nil {
+			return ErrorResponse(msg, -100, err.Error(), nil), nil
+		}
+		return WithResult(msg, []string{id}), nil
+
+	case methodUnsubscribeEth:
+		if err := b.removeSubscription(client, msg); err != nil {
+			return ErrorResponse(msg, -100, err.Error(), nil), nil
+		}
+		return WithResult(msg, true), nil
 
 	default:
 		// This should never happen
@@ -59,82 +82,95 @@ func (b *Broker) HandleSubscription(client *JsonRpcWsClient, msg *JsonRpcMsg) (*
 	}
 }
 
-func (b *Broker) addSubscription(client *JsonRpcWsClient, msg *JsonRpcMsg) (*JsonRpcMsg, error) {
-	query, err := getSubscriptionQuery(msg)
+func (b *Broker) addSubscription(client *JsonRpcWsClient, msg *JsonRpcMsg) (string, error) {
+	param, err := getSubscriptionParam(msg)
 	if err != nil {
-		return ErrorResponse(msg, -100, err.Error(), nil), nil
+		return "", err
 	}
 
 	b.upstreamSubMux.Lock()
 	defer b.upstreamSubMux.Unlock()
 
-	id, exists := b.sm.GetSubscriptionID(query)
+	id, exists := b.sm.GetSubscriptionID(param)
 	if !exists {
 		b.log.WithField("client", client).Debug("upstream subscription does not exist")
 
 		// Subscribe in upstream
-		id, err = b.pool.Subscribe(query)
+		id, err = b.pool.Subscribe(param)
 		if err != nil {
-			return ErrorResponse(msg, -100, err.Error(), nil), nil
+			return "", err
 		}
-		b.sm.AddSubscription(query, id)
+		b.sm.AddSubscription(param, id)
 
 		b.log.WithFields(map[string]interface{}{
 			"id":    id,
-			"query": query,
+			"param": param,
 		}).Info("subscribed upstream")
 	}
 
-	b.sm.SubscribeClient(id, client, msg.ID)
+	if msg.Method == methodSubscribeEth {
+		// Eth does not send the ID on subscription notifications. Lets do the same
+		b.sm.SubscribeClient(id, client, nil)
+	} else {
+		b.sm.SubscribeClient(id, client, msg.ID)
+	}
+
 	b.log.WithFields(map[string]interface{}{
 		"id":     id,
 		"client": client,
 	}).Debug("subscribed client")
 
-	return EmptyResult(msg), nil
+	return id, nil
 }
 
-func (b *Broker) removeSubscription(client *JsonRpcWsClient, msg *JsonRpcMsg) (*JsonRpcMsg, error) {
+func (b *Broker) removeSubscription(client *JsonRpcWsClient, msg *JsonRpcMsg) error {
 	b.log.WithField("client", client).Debug("unsubscribing client")
-	query, err := getSubscriptionQuery(msg)
+	subParam, err := getSubscriptionParam(msg)
 	if err != nil {
-		return ErrorResponse(msg, -100, err.Error(), nil), nil
+		return err
 	}
 
-	id, exists := b.sm.GetSubscriptionID(query)
-	if !exists {
-		return ErrorResponse(msg, -100, "subscription not found", nil), nil
+	var subID string
+	if isEthSubscriptionID(subParam) {
+		subID = subParam
+	} else {
+		id, exists := b.sm.GetSubscriptionID(subParam)
+		if !exists {
+			return fmt.Errorf("subscription does not exist")
+		}
+		subID = id
 	}
 
-	if !b.sm.ClientSubscribed(id, client) {
-		return ErrorResponse(msg, -100, "subscription not found", nil), nil
+	if !b.sm.ClientSubscribed(subID, client) {
+		return fmt.Errorf("subscription does not exist")
 	}
 
-	b.sm.UnsubscribeClient(id, client)
+	b.sm.UnsubscribeClient(subID, client)
 	b.log.WithFields(map[string]interface{}{
-		"id":     id,
+		"id":     subID,
 		"client": client,
 	}).Debug("unsubscribed client")
 
 	b.upstreamSubMux.Lock()
 	defer b.upstreamSubMux.Unlock()
 
-	if b.sm.SubscriptionEmpty(id) {
-		if err = b.pool.Unsubscribe(query); err != nil {
-			return nil, err
+	if b.sm.SubscriptionEmpty(subID) {
+		if err = b.pool.Unsubscribe(subID); err != nil {
+			return err
 		}
-		b.sm.RemoveSubscription(id)
+		param, _ := b.sm.GetSubscriptionParam(subID)
+		b.sm.RemoveSubscription(subID)
 
 		b.log.WithFields(map[string]interface{}{
-			"ID":    id,
-			"query": query,
+			"ID":    subID,
+			"param": param,
 		}).Warn("unsubscribed upstream")
 	}
 
-	return EmptyResult(msg), err
+	return nil
 }
 
-func (b *Broker) removeAllSubscriptions(client *JsonRpcWsClient, msg *JsonRpcMsg) (*JsonRpcMsg, error) {
+func (b *Broker) removeAllSubscriptions(client *JsonRpcWsClient) error {
 	b.log.WithField("client", client).Debug("unsubscribing client from all subscriptions")
 
 	b.upstreamSubMux.Lock()
@@ -146,30 +182,24 @@ func (b *Broker) removeAllSubscriptions(client *JsonRpcWsClient, msg *JsonRpcMsg
 
 		if b.sm.SubscriptionEmpty(subscriptionID) {
 			b.log.WithField("ID", subscriptionID).Debug("unsubscribing upstream")
-			query, exists := b.sm.GetSubscriptionQuery(subscriptionID)
-			if exists {
-				if err := b.pool.Unsubscribe(query); err != nil {
-					return nil, err
-				}
-				b.sm.RemoveSubscription(subscriptionID)
-
-				b.log.WithFields(map[string]interface{}{
-					"ID":    subscriptionID,
-					"query": query,
-				}).Warn("unsubscribed upstream")
+			if err := b.pool.Unsubscribe(subscriptionID); err != nil {
+				return err
 			}
+			b.sm.RemoveSubscription(subscriptionID)
+
+			param, _ := b.sm.GetSubscriptionParam(subscriptionID)
+			b.log.WithFields(map[string]interface{}{
+				"ID":    subscriptionID,
+				"param": param,
+			}).Warn("unsubscribed upstream")
 
 		}
 	}
-
-	if msg != nil {
-		return EmptyResult(msg), nil
-	}
-	return nil, nil
+	return nil
 }
 
 func (b *Broker) onSubscriptionMessage(msg *JsonRpcMsg) {
-	msgID := msg.ID.(int)
+	msgID := msg.ID.(string)
 
 	clients := b.sm.GetSubscriptionClients(msgID)
 	if len(clients) == 0 {
@@ -193,7 +223,7 @@ func (b *Broker) onSubscriptionMessage(msg *JsonRpcMsg) {
 
 func (b *Broker) onClientDisconnect(client *JsonRpcWsClient) {
 	b.log.Warn("removing all subscriptions for client")
-	if _, err := b.removeAllSubscriptions(client, nil); err != nil {
+	if err := b.removeAllSubscriptions(client); err != nil {
 		b.log.Errorf("error removing all subscriptions for client: %v", err)
 	}
 }

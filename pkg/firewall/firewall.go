@@ -12,25 +12,32 @@ import (
 )
 
 type Firewall struct {
-	cfgFile        string
-	cfg            *Config
+	cfgFile     string
+	cfg         *Config
+	configMutex sync.Mutex
+
 	lcdProxy       *HttpProxy
 	rpcProxy       *HttpProxy
 	grpcProxy      *GrpcProxy
 	jsonRpcHandler *JsonRpcHandler
-	configMutex    sync.Mutex
+
+	evmRpcProxy         *HttpProxy
+	evmRpcWsProxy       *HttpProxy
+	evmJsonRpcHandler   *JsonRpcHandler
+	evmJsonRpcWsHandler *JsonRpcHandler
 }
 
 func New(path string) (*Firewall, error) {
 	firewall := &Firewall{cfgFile: path}
 
 	log.WithField("file", path).Info("loading config file")
-	if err := firewall.loadConfig(); err != nil {
+	err := firewall.loadConfig()
+	if err != nil {
 		return nil, err
 	}
 
 	// Setup gRPC proxy
-	grpcProxy, err := NewGrpcProxy("grpc",
+	firewall.grpcProxy, err = NewGrpcProxy("grpc",
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.GrpcPort),
 		fmt.Sprintf("%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.GrpcPort),
 		WithMetricsEnabled[GrpcProxyOptions](firewall.cfg.Metrics.Enable),
@@ -38,10 +45,9 @@ func New(path string) (*Firewall, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error setting up grpc firewall proxy: %v", err)
 	}
-	firewall.grpcProxy = grpcProxy
 
 	// Setup LCD proxy
-	lcdProxy, err := NewHttpProxy("lcd",
+	firewall.lcdProxy, err = NewHttpProxy("lcd",
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.LcdPort),
 		fmt.Sprintf("http://%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.LcdPort),
 		WithCacheConfig[HttpProxyOptions](&firewall.cfg.Cache),
@@ -50,10 +56,9 @@ func New(path string) (*Firewall, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error setting up lcd firewall proxy: %v", err)
 	}
-	firewall.lcdProxy = lcdProxy
 
 	// Setup JSONRPC handler for RPC proxy
-	jsonRpcHandler, err := NewJsonRpcHandler(
+	firewall.jsonRpcHandler, err = NewJsonRpcHandler("jsonrpc",
 		WithCacheConfig[JsonRpcHandlerOptions](&firewall.cfg.Cache),
 		WithWebSocketEnabled[JsonRpcHandlerOptions](firewall.cfg.RPC.WebSocketEnabled),
 		WithWebSocketBackend[JsonRpcHandlerOptions](fmt.Sprintf("%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.RpcPort)),
@@ -63,10 +68,9 @@ func New(path string) (*Firewall, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error setting up jsonrpc handler: %v", err)
 	}
-	firewall.jsonRpcHandler = jsonRpcHandler
 
 	// Setup RPC proxy
-	rpcProxy, err := NewHttpProxy("rpc",
+	firewall.rpcProxy, err = NewHttpProxy("rpc",
 		fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.RpcPort),
 		fmt.Sprintf("http://%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.RpcPort),
 		WithCacheConfig[HttpProxyOptions](&firewall.cfg.Cache),
@@ -77,15 +81,72 @@ func New(path string) (*Firewall, error) {
 				Method: "POST",
 			},
 			{
-				Path:   websocketPath,
+				Path:   defaultWebsocketPath,
 				Method: "GET",
 			},
-		}, jsonRpcHandler),
+		}, firewall.jsonRpcHandler),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up rpc firewall proxy: %v", err)
 	}
-	firewall.rpcProxy = rpcProxy
+
+	if firewall.cfg.EnableEvm {
+		// Setup JSONRPC handler for EVM RPC proxy
+		firewall.evmJsonRpcHandler, err = NewJsonRpcHandler("evm_jsonrpc",
+			WithCacheConfig[JsonRpcHandlerOptions](&firewall.cfg.Cache),
+			WithWebSocketEnabled[JsonRpcHandlerOptions](false),
+			WithMetricsEnabled[JsonRpcHandlerOptions](firewall.cfg.Metrics.Enable),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error setting up jsonrpc handler for evm-rpc: %v", err)
+		}
+
+		firewall.evmRpcProxy, err = NewHttpProxy("evm_rpc",
+			fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.EvmRpcPort),
+			fmt.Sprintf("http://%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.EvmRpcPort),
+			WithCacheConfig[HttpProxyOptions](&firewall.cfg.Cache),
+			WithMetricsEnabled[HttpProxyOptions](firewall.cfg.Metrics.Enable),
+			WithEndpointHandler[HttpProxyOptions]([]Endpoint{
+				{
+					Path:   "/",
+					Method: "POST",
+				},
+			}, firewall.evmJsonRpcHandler),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error setting up evm-rpc firewall proxy: %v", err)
+		}
+
+		// Setup JSONRPC handler for EVM RPC WS proxy
+		firewall.evmJsonRpcWsHandler, err = NewJsonRpcHandler("evm_jsonrpc_ws",
+			WithCacheConfig[JsonRpcHandlerOptions](&firewall.cfg.Cache),
+			WithWebSocketEnabled[JsonRpcHandlerOptions](true),
+			WithWebSocketConnections[JsonRpcHandlerOptions](firewall.cfg.EVM.WS.WebSocketConnections),
+			WithWebSocketBackend[JsonRpcHandlerOptions](fmt.Sprintf("%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.EvmRpcWsPort)),
+			WithWebSocketPath[JsonRpcHandlerOptions]("/"),
+			WithUpstreamManager[JsonRpcHandlerOptions](EthUpstreamConnManager),
+			WithMetricsEnabled[JsonRpcHandlerOptions](firewall.cfg.Metrics.Enable),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error setting up jsonrpc handler for evm-rpc: %v", err)
+		}
+
+		firewall.evmRpcWsProxy, err = NewHttpProxy("evm_rpc_ws",
+			fmt.Sprintf("%s:%d", firewall.cfg.Host, firewall.cfg.EvmRpcWsPort),
+			fmt.Sprintf("http://%s:%d", firewall.cfg.Node.Host, firewall.cfg.Node.EvmRpcWsPort),
+			WithCacheConfig[HttpProxyOptions](&firewall.cfg.Cache),
+			WithMetricsEnabled[HttpProxyOptions](firewall.cfg.Metrics.Enable),
+			WithEndpointHandler[HttpProxyOptions]([]Endpoint{
+				{
+					Path:   "/",
+					Method: "GET",
+				},
+			}, firewall.evmJsonRpcWsHandler),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error setting up evm-rpc-ws firewall proxy: %v", err)
+		}
+	}
 
 	return firewall, nil
 }
@@ -124,6 +185,20 @@ func (f *Firewall) Run() error {
 			log.Errorf("error on lcd proxy: %v", err)
 		}
 	}()
+
+	if f.cfg.EnableEvm {
+		go func() {
+			if err := f.evmRpcProxy.Run(); err != nil {
+				log.Errorf("error on evm-rpc proxy: %v", err)
+			}
+		}()
+
+		go func() {
+			if err := f.evmRpcWsProxy.Run(); err != nil {
+				log.Errorf("error on evm-rpc-ws proxy: %v", err)
+			}
+		}()
+	}
 
 	return f.WatchConfigFile()
 }
@@ -186,4 +261,14 @@ func (f *Firewall) applyRules() {
 	f.rpcProxy.SetRules(f.cfg.RPC.Rules, f.cfg.RPC.Default)
 	log.WithField("default", f.cfg.RPC.JsonRpc.Default).Debug("applying JSONRPC firewall rules")
 	f.jsonRpcHandler.SetRules(f.cfg.RPC.JsonRpc.Rules, f.cfg.RPC.JsonRpc.Default)
+
+	if f.cfg.EnableEvm {
+		// Rules for EVM RPC
+		log.WithField("default", f.cfg.RPC.Default).Debug("applying EVM-RPC firewall rules")
+		f.evmJsonRpcHandler.SetRules(f.cfg.EVM.RPC.Rules, f.cfg.EVM.RPC.Default)
+
+		// Rules for EVM RPC WS
+		log.WithField("default", f.cfg.RPC.Default).Debug("applying EVM-RPC-WS firewall rules")
+		f.evmJsonRpcWsHandler.SetRules(f.cfg.EVM.WS.Rules, f.cfg.EVM.WS.Default)
+	}
 }
