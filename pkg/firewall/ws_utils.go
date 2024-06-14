@@ -1,29 +1,38 @@
 package firewall
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
-	methodSubscribe      = "subscribe"
-	methodUnsubscribe    = "unsubscribe"
-	methodUnsubscribeAll = "unsubscribe_all"
+	methodSubscribeCosmos      = "subscribe"
+	methodUnsubscribeCosmos    = "unsubscribe"
+	methodUnsubscribeAllCosmos = "unsubscribe_all"
+	methodSubscribeEth         = "eth_subscribe"
+	methodUnsubscribeEth       = "eth_unsubscribe"
 )
 
 func hasSubscriptionMethod(request *JsonRpcMsg) bool {
-	if request.Method == methodSubscribe ||
-		request.Method == methodUnsubscribe ||
-		request.Method == methodUnsubscribeAll {
+	if request.Method == methodSubscribeCosmos ||
+		request.Method == methodUnsubscribeCosmos ||
+		request.Method == methodUnsubscribeAllCosmos ||
+		request.Method == methodSubscribeEth ||
+		request.Method == methodUnsubscribeEth {
 		return true
 	}
 	return false
 }
 
-func getSubscriptionQuery(req *JsonRpcMsg) (string, error) {
+func getSubscriptionParam(req *JsonRpcMsg) (string, error) {
+	// Try to get it from dictionary with query key (cosmos only)
 	if params, ok := req.Params.(map[string]interface{}); ok {
 		if query, ok := params["query"].(string); ok {
 			return query, nil
 		}
 	}
 
+	// Otherwise, get from array of values (Both cosmos and eth)
 	params, ok := req.Params.([]interface{})
 	if !ok {
 		return "", fmt.Errorf("bad params for subscribe")
@@ -36,4 +45,8 @@ func getSubscriptionQuery(req *JsonRpcMsg) (string, error) {
 	}
 
 	return query, nil
+}
+
+func isEthSubscriptionID(params string) bool {
+	return strings.HasPrefix(params, "0x")
 }

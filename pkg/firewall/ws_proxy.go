@@ -3,6 +3,7 @@ package firewall
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -15,7 +16,7 @@ import (
 )
 
 const (
-	websocketPath = "/websocket"
+	defaultWebsocketPath = "/websocket"
 )
 
 type JsonRpcWebSocketProxy struct {
@@ -30,9 +31,10 @@ type JsonRpcWebSocketProxy struct {
 	responseTimeHist *prometheus.HistogramVec
 }
 
-func NewJsonRpcWebSocketProxy(backend string, connections int, cache cache.Cache[uint64, *JsonRpcMsg], metricsEnabled bool) *JsonRpcWebSocketProxy {
+func NewJsonRpcWebSocketProxy(name, backend, path string, connections int, upstreamConstructor UpstreamConnManagerConstructor,
+	cache cache.Cache[uint64, *JsonRpcMsg], metricsEnabled bool) *JsonRpcWebSocketProxy {
 	proxy := &JsonRpcWebSocketProxy{
-		broker:    NewBroker(backend, connections),
+		broker:    NewBroker(backend, path, connections, upstreamConstructor),
 		wsBackend: backend,
 		upgrader:  &websocket.Upgrader{},
 		cache:     cache,
@@ -44,7 +46,7 @@ func NewJsonRpcWebSocketProxy(backend string, connections int, cache cache.Cache
 
 	if metricsEnabled {
 		proxy.responseTimeHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "websocket_jsonrpc",
+			Namespace: fmt.Sprintf("websocket_%s", name),
 			Name:      "request_duration_seconds",
 			Help:      "Histogram of response time for handler in seconds",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},

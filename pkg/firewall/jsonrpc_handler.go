@@ -21,6 +21,7 @@ type JsonRpcHandler struct {
 	cache            cache.Cache[uint64, *JsonRpcMsg]
 	defaultAction    RuleAction
 	wsProxy          *JsonRpcWebSocketProxy
+	wsPath           string
 	rules            []*JsonRpcRule
 	rulesMutex       sync.RWMutex // Mutex to block readers when rules are being updated
 	hash             *maphash.Hash
@@ -29,13 +30,14 @@ type JsonRpcHandler struct {
 	batchResTimeHist *prometheus.HistogramVec
 }
 
-func NewJsonRpcHandler(opts ...Option[JsonRpcHandlerOptions]) (*JsonRpcHandler, error) {
+func NewJsonRpcHandler(name string, opts ...Option[JsonRpcHandlerOptions]) (*JsonRpcHandler, error) {
 	cfg := DefaultJsonRpcHandlerOptions()
 	for _, opt := range opts {
 		opt(cfg)
 	}
 	handler := &JsonRpcHandler{
-		hash: &maphash.Hash{},
+		hash:   &maphash.Hash{},
+		wsPath: cfg.WebsocketPath,
 	}
 
 	// Setup cache
@@ -59,8 +61,11 @@ func NewJsonRpcHandler(opts ...Option[JsonRpcHandlerOptions]) (*JsonRpcHandler, 
 
 	if cfg.WebsocketEnabled {
 		handler.wsProxy = NewJsonRpcWebSocketProxy(
+			name,
 			cfg.WebsocketBackend,
+			cfg.WebsocketPath,
 			cfg.WebsocketConnections,
+			cfg.UpstreamConstructor,
 			handler.cache,
 			cfg.MetricsEnabled,
 		)
@@ -68,13 +73,13 @@ func NewJsonRpcHandler(opts ...Option[JsonRpcHandlerOptions]) (*JsonRpcHandler, 
 
 	if cfg.MetricsEnabled {
 		handler.responseTimeHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "jsonrpc",
+			Namespace: name,
 			Name:      "request_duration_seconds",
 			Help:      "Histogram of response time for handler in seconds",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 		}, []string{"method", "path", "cache", "firewall"})
 		handler.batchResTimeHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "jsonrpc_batch",
+			Namespace: fmt.Sprintf("%s_batch", name),
 			Name:      "request_duration_seconds",
 			Help:      "Histogram of response time for handler in seconds",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
@@ -110,7 +115,9 @@ func (h *JsonRpcHandler) SetRules(rules []*JsonRpcRule, defaultAction RuleAction
 
 	h.rules = rules
 	h.defaultAction = defaultAction
-	h.wsProxy.SetRules(rules, defaultAction)
+	if h.wsProxy != nil {
+		h.wsProxy.SetRules(rules, defaultAction)
+	}
 }
 
 func (h *JsonRpcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next func(http.ResponseWriter, *http.Request)) {
@@ -122,7 +129,7 @@ func (h *JsonRpcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next 
 		return
 	}
 
-	if h.wsProxy != nil && r.URL.Path == websocketPath && r.Method == http.MethodGet {
+	if h.wsProxy != nil && r.URL.Path == h.wsPath && r.Method == http.MethodGet {
 		h.log.Debug("handling jsonrpc websocket connection")
 		h.wsProxy.HandleConnection(w, r)
 		return

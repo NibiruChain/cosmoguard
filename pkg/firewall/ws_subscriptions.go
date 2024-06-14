@@ -7,44 +7,44 @@ import (
 
 type SubscriptionManager struct {
 	subscriptionMux sync.RWMutex
-	queryToID       map[string]int
-	idToQuery       map[int]string
+	paramToID       map[string]string
+	idToParam       map[string]string
 
 	clientsMux          sync.RWMutex
-	clientSubscriptions map[int]map[*JsonRpcWsClient]interface{}
+	clientSubscriptions map[string]map[*JsonRpcWsClient]interface{}
 }
 
 func NewSubscriptionManager() *SubscriptionManager {
 	return &SubscriptionManager{
-		queryToID:           make(map[string]int),
-		idToQuery:           make(map[int]string),
-		clientSubscriptions: make(map[int]map[*JsonRpcWsClient]interface{}),
+		paramToID:           make(map[string]string),
+		idToParam:           make(map[string]string),
+		clientSubscriptions: make(map[string]map[*JsonRpcWsClient]interface{}),
 	}
 }
 
-func (s *SubscriptionManager) AddSubscription(query string, id int) {
+func (s *SubscriptionManager) AddSubscription(param string, id string) {
 	s.subscriptionMux.Lock()
 	defer s.subscriptionMux.Unlock()
-	s.queryToID[query] = id
-	s.idToQuery[id] = query
+	s.paramToID[param] = id
+	s.idToParam[id] = param
 
 	s.clientsMux.Lock()
 	defer s.clientsMux.Unlock()
 	s.clientSubscriptions[id] = make(map[*JsonRpcWsClient]interface{})
 }
 
-func (s *SubscriptionManager) RemoveSubscription(id int) {
+func (s *SubscriptionManager) RemoveSubscription(id string) {
 	s.subscriptionMux.Lock()
 	defer s.subscriptionMux.Unlock()
-	delete(s.queryToID, s.idToQuery[id])
-	delete(s.idToQuery, id)
+	delete(s.paramToID, s.idToParam[id])
+	delete(s.idToParam, id)
 
 	s.clientsMux.Lock()
 	defer s.clientsMux.Unlock()
 	delete(s.clientSubscriptions, id)
 }
 
-func (s *SubscriptionManager) SubscriptionEmpty(id int) bool {
+func (s *SubscriptionManager) SubscriptionEmpty(id string) bool {
 	s.subscriptionMux.RLock()
 	defer s.subscriptionMux.RUnlock()
 	s.clientsMux.RLock()
@@ -52,7 +52,7 @@ func (s *SubscriptionManager) SubscriptionEmpty(id int) bool {
 	return len(s.clientSubscriptions[id]) == 0
 }
 
-func (s *SubscriptionManager) SubscribeClient(id int, client *JsonRpcWsClient, clientSubID interface{}) {
+func (s *SubscriptionManager) SubscribeClient(id string, client *JsonRpcWsClient, clientSubID interface{}) {
 	s.subscriptionMux.RLock()
 	defer s.subscriptionMux.RUnlock()
 	s.clientsMux.Lock()
@@ -60,7 +60,7 @@ func (s *SubscriptionManager) SubscribeClient(id int, client *JsonRpcWsClient, c
 	s.clientSubscriptions[id][client] = clientSubID
 }
 
-func (s *SubscriptionManager) UnsubscribeClient(id int, client *JsonRpcWsClient) {
+func (s *SubscriptionManager) UnsubscribeClient(id string, client *JsonRpcWsClient) {
 	s.subscriptionMux.RLock()
 	defer s.subscriptionMux.RUnlock()
 	s.clientsMux.Lock()
@@ -68,7 +68,7 @@ func (s *SubscriptionManager) UnsubscribeClient(id int, client *JsonRpcWsClient)
 	delete(s.clientSubscriptions[id], client)
 }
 
-func (s *SubscriptionManager) ClientSubscribed(id int, client *JsonRpcWsClient) bool {
+func (s *SubscriptionManager) ClientSubscribed(id string, client *JsonRpcWsClient) bool {
 	s.subscriptionMux.RLock()
 	defer s.subscriptionMux.RUnlock()
 	s.clientsMux.RLock()
@@ -77,13 +77,13 @@ func (s *SubscriptionManager) ClientSubscribed(id int, client *JsonRpcWsClient) 
 	return ok
 }
 
-func (s *SubscriptionManager) GetSubscriptions(client *JsonRpcWsClient) []int {
+func (s *SubscriptionManager) GetSubscriptions(client *JsonRpcWsClient) []string {
 	s.subscriptionMux.RLock()
 	defer s.subscriptionMux.RUnlock()
 	s.clientsMux.RLock()
 	defer s.clientsMux.RUnlock()
 
-	list := make([]int, 0)
+	list := make([]string, 0)
 	for id, m := range s.clientSubscriptions {
 		if _, ok := m[client]; ok {
 			list = append(list, id)
@@ -92,21 +92,21 @@ func (s *SubscriptionManager) GetSubscriptions(client *JsonRpcWsClient) []int {
 	return list
 }
 
-func (s *SubscriptionManager) GetSubscriptionID(query string) (int, bool) {
+func (s *SubscriptionManager) GetSubscriptionID(param string) (string, bool) {
 	s.subscriptionMux.RLock()
 	defer s.subscriptionMux.RUnlock()
-	id, ok := s.queryToID[query]
+	id, ok := s.paramToID[param]
 	return id, ok
 }
 
-func (s *SubscriptionManager) GetSubscriptionQuery(id int) (string, bool) {
+func (s *SubscriptionManager) GetSubscriptionParam(id string) (string, bool) {
 	s.subscriptionMux.RLock()
 	defer s.subscriptionMux.RUnlock()
-	q, ok := s.idToQuery[id]
+	q, ok := s.idToParam[id]
 	return q, ok
 }
 
-func (s *SubscriptionManager) GetSubscriptionClients(id int) map[*JsonRpcWsClient]interface{} {
+func (s *SubscriptionManager) GetSubscriptionClients(id string) map[*JsonRpcWsClient]interface{} {
 	s.subscriptionMux.RLock()
 	defer s.subscriptionMux.RUnlock()
 	s.clientsMux.RLock()
