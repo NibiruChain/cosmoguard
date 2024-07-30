@@ -1,17 +1,22 @@
 host: 0.0.0.0 # optional
-rpcPort: 26657 # optional
-lcdPort: 1317 # optional
-grpcPort: 9090 # optional
+rpcPort: 16657 # optional
+lcdPort: 11317 # optional
+grpcPort: 19090 # optional
+enableEvm: false # optional
+evmRpcPort: 18545 # optional
+evmRpcWsPort: 18546 # optional
 
 node: # optional, defaults to values below
   host: 127.0.0.1 # optional
   rpcPort: 26657 # optional
   lcdPort: 1317 # optional
   grpcPort: 9090 # optional
+  evmRpcPort: 8545 # optional
+  evmRpcWsPort: 8546 # optional
 
 cache: # optional, defaults to values below
   ttl: 5s # optional
-  touchOnHit: false # optional
+  redis: <connection-url> # defaults to use in memory cache if not set
 
 metrics: # optional, defaults to values below
   enable: true # optional
@@ -95,7 +100,7 @@ rpc: # optional, defaults to allow everything
       - priority: 9999 # optional, defaults to 1000
         action: deny # either allow or deny
         methods: [ ] # empty or nil means all
-        params: {} # empty or nil means all
+        params: { } # empty or nil means all
         cache: # empty or nil means disabled
           enable: false
           ttl: 10s # optional, defaults to global .cache.ttl (5s if not specified)
@@ -125,3 +130,13 @@ rpc: # optional, defaults to allow everything
         methods: [ "abci_query" ]
         params:
           path: /cosmos.distribution.v1beta1.Query/DelegationTotalRewards
+
+evm: # optional, defaults to allow everything
+  rpc: # optional, defaults to allow everything
+    default: allow
+    rules: [ ]
+
+  ws: # optional, defaults to allow everything
+    webSocketConnections: 10
+    default: allow
+    rules: [ ]
