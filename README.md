@@ -76,7 +76,6 @@ cache:
   ttl: 10s
 
 rpc:
-  default: deny
   rules:
     - action: allow
       paths:
@@ -87,8 +86,6 @@ rpc:
         enable: true
 
   jsonrpc:
-    default: deny
-
     rules:
       - action: allow
         methods: [ "status" ]
