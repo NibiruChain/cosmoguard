@@ -1,5 +1,6 @@
 # cosmos-firewall
 
+[![Test](https://github.com/NibiruChain/cosmos-firewall/actions/workflows/test.yml/badge.svg)](https://github.com/NibiruChain/cosmos-firewall/actions/workflows/test.yml)
 [![goreleaser](https://github.com/NibiruChain/cosmos-firewall/actions/workflows/goreleaser.yml/badge.svg)](https://github.com/NibiruChain/cosmos-firewall/actions/workflows/goreleaser.yml)
 
 ## Introduction
