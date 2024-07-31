@@ -1,3 +1,4 @@
+version: 2
 project_name: cosmos-firewall
 
 env:
@@ -19,6 +20,9 @@ builds:
     flags:
       - -mod=readonly
       - -trimpath
+    ldflags:
+      - -X github.com/NibiruChain/cosmos-firewall/pkg/firewall.Version={{ .Version }}
+      - -X github.com/NibiruChain/cosmos-firewall/pkg/firewall.CommitHash={{ .Commit }}
 
   - id: linux
     main: ./cmd/firewall
@@ -35,6 +39,10 @@ builds:
     flags:
       - -mod=readonly
       - -trimpath
+    ldflags:
+      - -X github.com/NibiruChain/cosmos-firewall/pkg/firewall.Version={{ .Version }}
+      - -X github.com/NibiruChain/cosmos-firewall/pkg/firewall.CommitHash={{ .Commit }}
 
 universal_binaries:
   - id: darwin
+    name_template: firewall
