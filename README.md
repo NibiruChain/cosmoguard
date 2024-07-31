@@ -40,6 +40,8 @@ Usage of /firewall:
     	log format (either json or text) (default "json")
   -log-level string
     	log level. (default "info")
+  -version
+    	print firewall version
 ```
 
 #### Build from source
@@ -55,11 +57,13 @@ $ make install
 $ firewall --help
 Usage of firewall:
   -config string
-    	Path to configuration file. (default "/Users/helder/firewall.yaml")
+    	Path to configuration file. (default "$HOME/firewall.yaml")
   -log-format string
     	log format (either json or text) (default "json")
   -log-level string
-    	log level. (default "info") 
+    	log level. (default "info")
+  -version
+    	print firewall version
 ```
 
 ## Usage Instructions
