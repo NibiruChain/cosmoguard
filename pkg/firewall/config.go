@@ -53,12 +53,12 @@ type RuleCache struct {
 }
 
 type LcdConfig struct {
-	Default RuleAction  `yaml:"default,omitempty" default:"allow"`
+	Default RuleAction  `yaml:"default,omitempty" default:"deny"`
 	Rules   []*HttpRule `yaml:"rules,omitempty"`
 }
 
 type RpcConfig struct {
-	Default              RuleAction    `yaml:"default,omitempty" default:"allow"`
+	Default              RuleAction    `yaml:"default,omitempty" default:"deny"`
 	Rules                []*HttpRule   `yaml:"rules,omitempty"`
 	JsonRpc              JsonRpcConfig `yaml:"jsonrpc,omitempty"`
 	WebSocketEnabled     bool          `yaml:"webSocketEnabled,omitempty" default:"true"`
@@ -66,12 +66,12 @@ type RpcConfig struct {
 }
 
 type JsonRpcConfig struct {
-	Default RuleAction     `yaml:"default,omitempty" default:"allow"`
+	Default RuleAction     `yaml:"default,omitempty" default:"deny"`
 	Rules   []*JsonRpcRule `yaml:"rules,omitempty"`
 }
 
 type GrpcConfig struct {
-	Default RuleAction  `yaml:"default,omitempty" default:"allow"`
+	Default RuleAction  `yaml:"default,omitempty" default:"deny"`
 	Rules   []*GrpcRule `yaml:"rules,omitempty"`
 }
 
@@ -86,12 +86,12 @@ type EvmConfig struct {
 }
 
 type EvmRpcConfig struct {
-	Default RuleAction     `yaml:"default,omitempty" default:"allow"`
+	Default RuleAction     `yaml:"default,omitempty" default:"deny"`
 	Rules   []*JsonRpcRule `yaml:"rules,omitempty"`
 }
 
 type EvmRpcWsConfig struct {
-	Default              RuleAction     `yaml:"default,omitempty" default:"allow"`
+	Default              RuleAction     `yaml:"default,omitempty" default:"deny"`
 	Rules                []*JsonRpcRule `yaml:"rules,omitempty"`
 	WebSocketConnections int            `yaml:"webSocketConnections,omitempty" default:"10"`
 }

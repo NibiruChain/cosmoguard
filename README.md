@@ -67,7 +67,7 @@ Usage of firewall:
 ### Configuration File
 
 The configuration file contains all configurations and firewall rules to be applied. Hot-reloading is active for firewall rules, so that any changes are applied on-the-fly.
-All fields are optional, so an empty configuration file is enough to start, but the default is to have no firewall rules (allows everything) and cache nothing.
+All fields are optional, so an empty configuration file is enough to start, but the default is to have no firewall rules (blocks everything).
 
 An example to only allow querying node status on both `RPC` and `JSON-RPC`, and cache the response for 10 seconds, would be:
 

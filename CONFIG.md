@@ -1,6 +1,7 @@
 # Configuration
 
 ## Overview
+
 The configuration file for cosmos-firewall allows fine-grained control over various aspects of the firewall,
 including host settings, ports, caching, metrics, and specific rules for LCD, gRPC, RPC, JSON-RPC, and EVM.
 Most fields are optional and default to specified values.
@@ -31,23 +32,23 @@ Most fields are optional and default to specified values.
 | `metrics.enable`                   | `true`            | Enable or disable metrics collection.                                         |
 | `metrics.port`                     | `9001`            | Port for metrics.                                                             |
 | **LCD (REST API) Settings**        |                   |                                                                               |
-| `lcd.default`                      | `allow`           | Default action for LCD requests.                                              |
+| `lcd.default`                      | `deny`            | Default action for LCD requests.                                              |
 | `lcd.rules`                        | (Empty)           | List of [HTTP Rules](#http-rule) for handling LCD requests.                   |
 | **gRPC Settings**                  |                   |                                                                               |
-| `grpc.default`                     | `allow`           | Default action for gRPC requests.                                             |
+| `grpc.default`                     | `deny`            | Default action for gRPC requests.                                             |
 | `grpc.rules`                       | (Empty)           | List of [gRPC Rules](#grpc-rule) for handling gRPC requests.                  |
 | **RPC Settings**                   |                   |                                                                               |
-| `rpc.default`                      | `allow`           | Default action for RPC requests.                                              |
+| `rpc.default`                      | `deny`            | Default action for RPC requests.                                              |
 | `rpc.rules`                        | (Empty)           | List of [HTTP Rules](#http-rule) for handling RPC requests.                   |
 | **JSON-RPC Settings**              |                   |                                                                               |
-| `rpc.jsonrpc.default`              | `allow`           | Default action for JSON-RPC requests.                                         |
+| `rpc.jsonrpc.default`              | `deny`            | Default action for JSON-RPC requests.                                         |
 | `rpc.jsonrpc.webSocketEnabled`     | `true`            | Enable or disable WebSocket support.                                          |
 | `rpc.jsonrpc.webSocketConnections` | `10`              | Maximum number of WebSocket connections.                                      |
 | `rpc.jsonrpc.rules`                | (Empty)           | List of [JSON-RPC Rules](#json-rpc-rule) for handling JSON-RPC requests.      |
 | **EVM Settings**                   |                   |                                                                               |
-| `evm.rpc.default`                  | `allow`           | Default action for EVM RPC requests.                                          |
+| `evm.rpc.default`                  | `deny`            | Default action for EVM RPC requests.                                          |
 | `evm.rpc.rules`                    | (Empty)           | List of [JSON-RPC Rules](#json-rpc-rule) for handling EVM RPC requests.       |
-| `evm.ws.default`                   | `allow`           | Default action for EVM WebSocket requests.                                    |
+| `evm.ws.default`                   | `deny`            | Default action for EVM WebSocket requests.                                    |
 | `evm.ws.webSocketConnections`      | `10`              | Maximum number of WebSocket connections.                                      |
 | `evm.ws.rules`                     | (Empty)           | List of [JSON-RPC Rules](#json-rpc-rule) for handling EVM WebSocket requests. |
 
@@ -131,13 +132,14 @@ rules:
 
 ### gRPC rule
 
-| Option        | Default Value | Description                                                                                                        |
-|---------------|---------------|--------------------------------------------------------------------------------------------------------------------|
-| `priority`    | `1000`        | The priority of the rule. Lower numbers indicate higher priority.                                                  |
-| `action`      | `allow`       | The action to be taken for matching requests: either `allow` or `deny`.                                            |
-| `methods`     | (Empty)       | List of gRPC methods this rule applies to. An empty list means all methods are included. **Wildcards supported**.  |
+| Option     | Default Value | Description                                                                                                       |
+|------------|---------------|-------------------------------------------------------------------------------------------------------------------|
+| `priority` | `1000`        | The priority of the rule. Lower numbers indicate higher priority.                                                 |
+| `action`   | `allow`       | The action to be taken for matching requests: either `allow` or `deny`.                                           |
+| `methods`  | (Empty)       | List of gRPC methods this rule applies to. An empty list means all methods are included. **Wildcards supported**. |
 
 #### Example
+
 ```yaml
 rules:
   - priority: 9999
@@ -145,10 +147,10 @@ rules:
     methods: [ ]
 
   - action: allow
-    methods: 
+    methods:
       - /cosmos.bank.v1beta1.Query/AllBalances
 
   - action: allow
-    methods: 
+    methods:
       - /cosmos.staking.v1beta1.Query/**
 ```
