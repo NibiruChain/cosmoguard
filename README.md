@@ -1,5 +1,7 @@
 # cosmos-firewall
 
+[![goreleaser](https://github.com/NibiruChain/cosmos-firewall/actions/workflows/goreleaser.yml/badge.svg)](https://github.com/NibiruChain/cosmos-firewall/actions/workflows/goreleaser.yml)
+
 ## Introduction
 **cosmos-firewall** is a specialized firewall designed for Cosmos nodes. It offers fine-grained control over API access by allowing node administrators to manage access at the API endpoint level, rather than just by port. Additionally, it features a caching mechanism to optimize performance by caching responses for specified endpoints.
 
