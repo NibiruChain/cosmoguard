@@ -37,7 +37,7 @@
 An official docker image is available. You can use it by mounting config file at the root path (or use `-config` flag if you want to mount it somewhere else):
 ```bash
 $ docker run -it --name cosmoguard -v /path/to/config/file.yaml:/root/cosmoguard.yaml ghcr.io/nibiruchain/cosmoguard --help
-Usage of /cosmoguard:
+Usage of cosmoguard:
   -config string
     	Path to configuration file. (default "/root/cosmoguard.yaml")
   -log-format string

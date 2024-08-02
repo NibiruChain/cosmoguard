@@ -13,5 +13,5 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 FROM gcr.io/distroless/static
 WORKDIR /
-COPY --from=builder /src/app/cosmoguard .
-ENTRYPOINT ["/cosmoguard"]
+COPY --from=builder /src/app/cosmoguard /bin/
+ENTRYPOINT ["cosmoguard"]
