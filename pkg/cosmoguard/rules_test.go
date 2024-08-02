@@ -1,4 +1,4 @@
-package firewall
+package cosmoguard
 
 import (
 	"net/http"

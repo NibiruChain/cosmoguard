@@ -1,4 +1,4 @@
-package firewall
+package cosmoguard
 
 import (
 	"errors"
@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/NibiruChain/cosmos-firewall/pkg/util"
+	"github.com/NibiruChain/cosmoguard/pkg/util"
 )
 
 type UpstreamConnManagerCosmos struct {

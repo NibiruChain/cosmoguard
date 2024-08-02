@@ -1,4 +1,4 @@
-package firewall
+package cosmoguard
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/segmentio/fasthash/fnv1a"
 
-	"github.com/NibiruChain/cosmos-firewall/pkg/cache"
+	"github.com/NibiruChain/cosmoguard/pkg/cache"
 )
 
 var (

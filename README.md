@@ -1,10 +1,10 @@
-# cosmos-firewall
+# CosmoGuard
 
-[![Test](https://github.com/NibiruChain/cosmos-firewall/actions/workflows/test.yml/badge.svg)](https://github.com/NibiruChain/cosmos-firewall/actions/workflows/test.yml)
-[![goreleaser](https://github.com/NibiruChain/cosmos-firewall/actions/workflows/goreleaser.yml/badge.svg)](https://github.com/NibiruChain/cosmos-firewall/actions/workflows/goreleaser.yml)
+[![Test](https://github.com/NibiruChain/cosmoguard/actions/workflows/test.yml/badge.svg)](https://github.com/NibiruChain/cosmoguard/actions/workflows/test.yml)
+[![goreleaser](https://github.com/NibiruChain/cosmoguard/actions/workflows/goreleaser.yml/badge.svg)](https://github.com/NibiruChain/cosmoguard/actions/workflows/goreleaser.yml)
 
 ## Introduction
-**cosmos-firewall** is a specialized firewall designed for Cosmos nodes. It offers fine-grained control over API access by allowing node administrators to manage access at the API endpoint level, rather than just by port. Additionally, it features a caching mechanism to optimize performance by caching responses for specified endpoints.
+**CosmoGuard** is a specialized firewall designed for Cosmos nodes. It offers fine-grained control over API access by allowing node administrators to manage access at the API endpoint level, rather than just by port. Additionally, it features a caching mechanism to optimize performance by caching responses for specified endpoints.
 
 ## Key Features
 - **Endpoint-Level Access Control**: Control access to specific API endpoints across all supported APIs:
@@ -12,15 +12,15 @@
     - Cosmos API
     - `gRPC`
     - EVM `JSON-RPC` (including `WebSockets`)
-- **Wildcard support**: Use wildcards in firewall rules to define broad or specific access control:
+- **Wildcard support**: Use wildcards in CosmoGuard rules to define broad or specific access control:
     - `*` matches any single component in a path.
     - `**` matches multiple components, allowing for more flexible rules.
 - **Caching**: Define caching strategies for each endpoint to improve performance (`gRPC` not supported). Two caching backends are currently supported:
     - **In-Memory**: Default caching mechanism, storing data in memory.
     - **Redis**: For distributed caching across multiple instances.
-- **Rule Prioritization**: Firewall rules can be prioritized using an integer value, with lower numbers indicating higher priority. By default, rules have a priority of 1000, but this can be adjusted to ensure specific rules are evaluated first.
-- **WebSocket Connection Management**: The firewall maintains a limited number of WebSocket connections to the node (default is 10). This helps to optimize node resource usage by offloading the handling of thousands of WebSocket connections to the firewall.
-- **Hot-Reloading of Configuration**: The configuration file, specifically the firewall rules, can be updated without restarting the application. Changes to the configuration file trigger hot-reloading, recompiling and applying the new rules on-the-fly.
+- **Rule Prioritization**: CosmoGuard rules can be prioritized using an integer value, with lower numbers indicating higher priority. By default, rules have a priority of 1000, but this can be adjusted to ensure specific rules are evaluated first.
+- **WebSocket Connection Management**: CosmoGuard maintains a limited number of WebSocket connections to the node (default is 10). This helps to optimize node resource usage by offloading the handling of thousands of WebSocket connections to CosmoGuard.
+- **Hot-Reloading of Configuration**: The configuration file, specifically CosmoGuard rules, can be updated without restarting the application. Changes to the configuration file trigger hot-reloading, recompiling and applying the new rules on-the-fly.
 
 
 ## Installation
@@ -35,46 +35,46 @@
 
 An official docker image is available. You can use it by mounting config file at the root path (or use `-config` flag if you want to mount it somewhere else):
 ```bash
-$ docker run -it --name firewall -v /path/to/config/file.yaml:/root/firewall.yaml ghcr.io/nibiruchain/cosmos-firewall --help
-Usage of /firewall:
+$ docker run -it --name cosmoguard -v /path/to/config/file.yaml:/root/cosmoguard.yaml ghcr.io/nibiruchain/cosmoguard --help
+Usage of /cosmoguard:
   -config string
-    	Path to configuration file. (default "/root/firewall.yaml")
+    	Path to configuration file. (default "/root/cosmoguard.yaml")
   -log-format string
     	log format (either json or text) (default "json")
   -log-level string
     	log level. (default "info")
   -version
-    	print firewall version
+    	print cosmoguard version
 ```
 
 #### Build from source
 1. Clone the repo and install using Makefile:
 ```bash
-$ git clone https://github.com/NibiruChain/cosmos-firewall.git
-$ cd cosmos-firewall
+$ git clone https://github.com/NibiruChain/cosmoguard.git
+$ cd cosmoguard
 $ make install
 ```
 
 2. Check installation (ensure `~/go/bin` is in your `PATH`):
 ```bash
-$ firewall --help
-Usage of firewall:
+$ cosmoguard --help
+Usage of cosmoguard:
   -config string
-    	Path to configuration file. (default "$HOME/firewall.yaml")
+    	Path to configuration file. (default "$HOME/cosmoguard.yaml")
   -log-format string
     	log format (either json or text) (default "json")
   -log-level string
     	log level. (default "info")
   -version
-    	print firewall version
+    	print cosmoguard version
 ```
 
 ## Usage Instructions
 
 ### Configuration File
 
-The configuration file contains all configurations and firewall rules to be applied. Hot-reloading is active for firewall rules, so that any changes are applied on-the-fly.
-All fields are optional, so an empty configuration file is enough to start, but the default is to have no firewall rules (blocks everything).
+The configuration file contains all configurations and cosmoguard rules to be applied. Hot-reloading is active for cosmoguard rules, so that any changes are applied on-the-fly.
+All fields are optional, so an empty configuration file is enough to start, but the default is to have no cosmoguard rules (blocks everything).
 
 An example to only allow querying node status on both `RPC` and `JSON-RPC`, and cache the response for 10 seconds, would be:
 
@@ -102,8 +102,8 @@ rpc:
 
 Refer to [Configuration](./CONFIG.md) to see all configuration options and their defaults.
 
-### Starting the Firewall
-To start the firewall, use the following command:
+### Starting CosmoGuard
+To start CosmoGuard, use the following command:
 ```
-$ firewall -config /path/to/config/file.yaml
+$ cosmoguard -config /path/to/config/file.yaml
 ```

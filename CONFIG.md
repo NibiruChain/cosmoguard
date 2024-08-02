@@ -2,7 +2,7 @@
 
 ## Overview
 
-The configuration file for cosmos-firewall allows fine-grained control over various aspects of the firewall,
+The configuration file for CosmoGuard allows fine-grained control over various aspects,
 including host settings, ports, caching, metrics, and specific rules for LCD, gRPC, RPC, JSON-RPC, and EVM.
 Most fields are optional and default to specified values.
 
@@ -11,7 +11,7 @@ Most fields are optional and default to specified values.
 | Option                             | Default Value     | Description                                                                   |
 |------------------------------------|-------------------|-------------------------------------------------------------------------------|
 | **Global Settings**                |                   |                                                                               |
-| `host`                             | `0.0.0.0`         | The host address the firewall listens on.                                     |
+| `host`                             | `0.0.0.0`         | The host address the CosmoGuard listens on.                                   |
 | `rpcPort`                          | `16657`           | Port for Tendermint RPC.                                                      |
 | `lcdPort`                          | `11317`           | Port for Cosmos REST API (LCD).                                               |
 | `grpcPort`                         | `19090`           | Port for gRPC.                                                                |

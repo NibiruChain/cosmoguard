@@ -1,4 +1,4 @@
-package firewall
+package cosmoguard
 
 import (
 	"io"
@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/NibiruChain/cosmos-firewall/pkg/cache"
-	"github.com/NibiruChain/cosmos-firewall/pkg/util"
+	"github.com/NibiruChain/cosmoguard/pkg/cache"
+	"github.com/NibiruChain/cosmoguard/pkg/util"
 )
 
 type EndpointHandler interface {
@@ -90,7 +90,7 @@ func NewHttpProxy(name, localAddr, remoteAddr string, opts ...Option[HttpProxyOp
 			Name:      "request_duration_seconds",
 			Help:      "Histogram of response time for handler in seconds",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-		}, []string{"method", "status_code", "cache", "firewall"})
+		}, []string{"method", "status_code", "cache", "cosmoguard"})
 	}
 
 	return &proxy, nil

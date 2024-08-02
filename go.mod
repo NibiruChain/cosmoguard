@@ -1,4 +1,4 @@
-module github.com/NibiruChain/cosmos-firewall
+module github.com/NibiruChain/cosmoguard
 
 go 1.22
 

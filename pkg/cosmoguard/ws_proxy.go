@@ -1,4 +1,4 @@
-package firewall
+package cosmoguard
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/NibiruChain/cosmos-firewall/pkg/cache"
+	"github.com/NibiruChain/cosmoguard/pkg/cache"
 )
 
 const (
@@ -50,7 +50,7 @@ func NewJsonRpcWebSocketProxy(name, backend, path string, connections int, upstr
 			Name:      "request_duration_seconds",
 			Help:      "Histogram of response time for handler in seconds",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-		}, []string{"method", "path", "cache", "firewall"})
+		}, []string{"method", "path", "cache", "cosmoguard"})
 	}
 
 	return proxy

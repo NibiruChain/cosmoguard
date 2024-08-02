@@ -1,4 +1,4 @@
-package firewall
+package cosmoguard
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/NibiruChain/cosmos-firewall/pkg/cache"
+	"github.com/NibiruChain/cosmoguard/pkg/cache"
 )
 
 type JsonRpcHandler struct {
@@ -77,7 +77,7 @@ func NewJsonRpcHandler(name string, opts ...Option[JsonRpcHandlerOptions]) (*Jso
 			Name:      "request_duration_seconds",
 			Help:      "Histogram of response time for handler in seconds",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-		}, []string{"method", "path", "cache", "firewall"})
+		}, []string{"method", "path", "cache", "cosmoguard"})
 		handler.batchResTimeHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: fmt.Sprintf("%s_batch", name),
 			Name:      "request_duration_seconds",

@@ -1,4 +1,4 @@
-package firewall
+package cosmoguard
 
 type SharedOptions struct {
 	CacheConfig    *CacheGlobalConfig

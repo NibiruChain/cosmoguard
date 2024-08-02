@@ -1,13 +1,13 @@
 version: 2
-project_name: cosmos-firewall
+project_name: cosmoguard
 
 env:
   - CGO_ENABLED=0
 
 builds:
   - id: darwin
-    main: ./cmd/firewall
-    binary: firewall
+    main: ./cmd/cosmoguard
+    binary: cosmoguard
     goos:
       - darwin
     goarch:
@@ -21,12 +21,13 @@ builds:
       - -mod=readonly
       - -trimpath
     ldflags:
-      - -X github.com/NibiruChain/cosmos-firewall/pkg/firewall.Version={{ .Version }}
-      - -X github.com/NibiruChain/cosmos-firewall/pkg/firewall.CommitHash={{ .Commit }}
+      - -s -w
+      - -X github.com/NibiruChain/cosmoguard/pkg/cosmoguard.Version={{ .Version }}
+      - -X github.com/NibiruChain/cosmoguard/pkg/cosmoguard.CommitHash={{ .Commit }}
 
   - id: linux
-    main: ./cmd/firewall
-    binary: firewall
+    main: ./cmd/cosmoguard
+    binary: cosmoguard
     goos:
       - linux
     goarch:
@@ -40,9 +41,9 @@ builds:
       - -mod=readonly
       - -trimpath
     ldflags:
-      - -X github.com/NibiruChain/cosmos-firewall/pkg/firewall.Version={{ .Version }}
-      - -X github.com/NibiruChain/cosmos-firewall/pkg/firewall.CommitHash={{ .Commit }}
+      - -s -w
+      - -X github.com/NibiruChain/cosmoguard/pkg/cosmoguard.Version={{ .Version }}
+      - -X github.com/NibiruChain/cosmoguard/pkg/cosmoguard.CommitHash={{ .Commit }}
 
 universal_binaries:
   - id: darwin
-    name_template: firewall

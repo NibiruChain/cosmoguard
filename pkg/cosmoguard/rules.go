@@ -1,4 +1,4 @@
-package firewall
+package cosmoguard
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/gobwas/glob"
 
-	"github.com/NibiruChain/cosmos-firewall/pkg/util"
+	"github.com/NibiruChain/cosmoguard/pkg/util"
 )
 
 type RuleAction string
