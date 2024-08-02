@@ -108,3 +108,7 @@ To start CosmoGuard, use the following command:
 ```
 $ cosmoguard -config /path/to/config/file.yaml
 ```
+
+## License
+
+Unless a file notes otherwise, it will fall under the [MIT License](./LICENSE.md). 
