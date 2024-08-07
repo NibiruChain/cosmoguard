@@ -3,6 +3,7 @@
 [![Test](https://github.com/NibiruChain/cosmoguard/actions/workflows/test.yml/badge.svg)](https://github.com/NibiruChain/cosmoguard/actions/workflows/test.yml)
 [![GoReleaser](https://github.com/NibiruChain/cosmoguard/actions/workflows/goreleaser.yml/badge.svg)](https://github.com/NibiruChain/cosmoguard/actions/workflows/goreleaser.yml)
 [![Docker Builds](https://github.com/NibiruChain/cosmoguard/actions/workflows/docker.yml/badge.svg)](https://github.com/NibiruChain/cosmoguard/actions/workflows/docker.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/NibiruChain/cosmoguard/blob/main/LICENSE.md)
 
 ## Introduction
 **CosmoGuard** is a specialized firewall designed for Cosmos nodes. It offers fine-grained control over API access by allowing node administrators to manage access at the API endpoint level, rather than just by port. Additionally, it features a caching mechanism to optimize performance by caching responses for specified endpoints.
