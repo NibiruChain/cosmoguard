@@ -124,7 +124,7 @@ func (j JsonRpcMsgs) Marshal() ([]byte, error) {
 }
 
 func ParseJsonRpcMessage(b []byte) (*JsonRpcMsg, JsonRpcMsgs, error) {
-	if bytes.HasPrefix(b, []byte{'['}) && bytes.HasSuffix(b, []byte{']'}) {
+	if bytes.HasPrefix(b, []byte{'['}) {
 		var msg JsonRpcMsgs
 		err := json.Unmarshal(b, &msg)
 		return nil, msg, err
