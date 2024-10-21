@@ -342,6 +342,7 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 	var cacheHits, cacheMisses, allowed, denied int
 
 	h.rulesMutex.RLock()
+RequestsLoop:
 	for _, req := range requests {
 		if h.rules == nil || len(h.rules) == 0 {
 			cacheMisses++
@@ -352,7 +353,7 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 				responses.Deny(req)
 				denied++
 			}
-			continue
+			continue RequestsLoop
 		}
 		for _, rule := range h.rules {
 			match := rule.Match(req)
@@ -370,7 +371,7 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 						h.log.Errorf("error getting cached value: %v", err)
 						responses.AddPending(req)
 						cacheMisses++
-						continue
+						continue RequestsLoop
 					}
 
 					if cached {
@@ -378,13 +379,14 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 						if err == nil {
 							cacheHits++
 							responses.AddResponseWithCacheConfig(req, res, req.Hash(), rule.Cache)
-							continue
+							continue RequestsLoop
 						}
 						h.log.Errorf("error loading response from cache: %v", err)
 					}
 
 					cacheMisses++
 					responses.AddPending(req)
+					continue RequestsLoop
 
 				case RuleActionDeny:
 					denied++
@@ -393,12 +395,17 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 						"params": req.Params,
 					}).Debug("request denied")
 					responses.Deny(req)
+					continue RequestsLoop
 
 				default:
 					h.log.Errorf("unrecognized rule action %q", rule.Action)
 				}
 				break
 			}
+		}
+		if h.defaultAction == RuleActionAllow {
+			responses.AddPending(req)
+			allowed++
 		}
 	}
 	h.rulesMutex.RUnlock()
@@ -413,7 +420,6 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 			WriteError(w, http.StatusInternalServerError, "error getting responses from upstream")
 			return
 		}
-
 		if len(upstreamResponses) == len(pendingRequests) {
 			responses.Set(pendingRequests, upstreamResponses)
 			if err = responses.StoreInCache(h.cache); err != nil {
@@ -457,6 +463,7 @@ func (h *JsonRpcHandler) getResponsesFromUpstream(httpRequest *http.Request, req
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling requests to upstream: %v", err)
 	}
+	fmt.Println(string(b))
 	req := httpRequest.Clone(httpRequest.Context())
 	req.Body = io.NopCloser(bytes.NewReader(b))
 	req.ContentLength = int64(len(b))
@@ -469,6 +476,10 @@ func (h *JsonRpcHandler) getResponsesFromUpstream(httpRequest *http.Request, req
 	if err != nil {
 		return nil, fmt.Errorf("error reading body from upstream response: %v", err)
 	}
-	_, responses, _ := ParseJsonRpcMessage(b)
+	fmt.Println(string(b))
+	single, responses, _ := ParseJsonRpcMessage(b)
+	if len(responses) == 0 && single != nil {
+		responses = JsonRpcMsgs{single}
+	}
 	return responses, nil
 }
