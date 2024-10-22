@@ -463,7 +463,6 @@ func (h *JsonRpcHandler) getResponsesFromUpstream(httpRequest *http.Request, req
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling requests to upstream: %v", err)
 	}
-	fmt.Println(string(b))
 	req := httpRequest.Clone(httpRequest.Context())
 	req.Body = io.NopCloser(bytes.NewReader(b))
 	req.ContentLength = int64(len(b))
@@ -476,7 +475,6 @@ func (h *JsonRpcHandler) getResponsesFromUpstream(httpRequest *http.Request, req
 	if err != nil {
 		return nil, fmt.Errorf("error reading body from upstream response: %v", err)
 	}
-	fmt.Println(string(b))
 	single, responses, _ := ParseJsonRpcMessage(b)
 	if len(responses) == 0 && single != nil {
 		responses = JsonRpcMsgs{single}
