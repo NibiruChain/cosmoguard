@@ -209,13 +209,20 @@ func (l *JsonRpcResponses) AddPending(request *JsonRpcMsg) {
 	*l = append(*l, res)
 }
 
-func (l *JsonRpcResponses) AddResponseWithCacheConfig(request, response *JsonRpcMsg, cacheKey uint64, cacheCfg *RuleCache) {
+func (l *JsonRpcResponses) AddResponse(request, response *JsonRpcMsg) {
+	res := &JsonRpcResponse{
+		Request: request,
+	}
+	res.Response = response.CloneWithID(request.ID)
+	*l = append(*l, res)
+}
+
+func (l *JsonRpcResponses) AddPendingWithCacheConfig(request *JsonRpcMsg, cacheKey uint64, cacheCfg *RuleCache) {
 	res := &JsonRpcResponse{
 		Request:  request,
 		Cache:    cacheCfg,
 		CacheKey: cacheKey,
 	}
-	res.Response = response.CloneWithID(request.ID)
 	*l = append(*l, res)
 }
 

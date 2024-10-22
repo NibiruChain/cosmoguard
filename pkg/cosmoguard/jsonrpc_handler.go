@@ -369,7 +369,7 @@ RequestsLoop:
 					cached, err := h.cache.Has(r.Context(), req.Hash())
 					if err != nil {
 						h.log.Errorf("error getting cached value: %v", err)
-						responses.AddPending(req)
+						responses.AddPendingWithCacheConfig(req, req.Hash(), rule.Cache)
 						cacheMisses++
 						continue RequestsLoop
 					}
@@ -378,14 +378,14 @@ RequestsLoop:
 						res, err := h.cache.Get(r.Context(), req.Hash())
 						if err == nil {
 							cacheHits++
-							responses.AddResponseWithCacheConfig(req, res, req.Hash(), rule.Cache)
+							responses.AddResponse(req, res)
 							continue RequestsLoop
 						}
 						h.log.Errorf("error loading response from cache: %v", err)
 					}
 
 					cacheMisses++
-					responses.AddPending(req)
+					responses.AddPendingWithCacheConfig(req, req.Hash(), rule.Cache)
 					continue RequestsLoop
 
 				case RuleActionDeny:
