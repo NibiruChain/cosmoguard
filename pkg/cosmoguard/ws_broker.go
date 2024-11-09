@@ -68,7 +68,7 @@ func (b *Broker) HandleSubscription(client *JsonRpcWsClient, msg *JsonRpcMsg) (*
 		if err != nil {
 			return ErrorResponse(msg, -100, err.Error(), nil), nil
 		}
-		return WithResult(msg, []string{id}), nil
+		return WithResult(msg, id), nil
 
 	case methodUnsubscribeEth:
 		if err := b.removeSubscription(client, msg); err != nil {
