@@ -129,6 +129,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(client *JsonRpcWsClient, request *
 
 						duration := time.Since(startTime)
 						p.log.WithFields(map[string]interface{}{
+							"id":       request.ID,
 							"method":   request.Method,
 							"params":   request.Params,
 							"cache":    cacheHit,
@@ -168,6 +169,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(client *JsonRpcWsClient, request *
 
 				duration := time.Since(startTime)
 				p.log.WithFields(map[string]interface{}{
+					"id":       request.ID,
 					"method":   request.Method,
 					"params":   request.Params,
 					"cache":    cacheMiss,
@@ -198,6 +200,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(client *JsonRpcWsClient, request *
 
 				duration := time.Since(startTime)
 				p.log.WithFields(map[string]interface{}{
+					"id":       request.ID,
 					"method":   request.Method,
 					"params":   request.Params,
 					"duration": duration,
@@ -247,6 +250,7 @@ func (p *JsonRpcWebSocketProxy) handleRequest(client *JsonRpcWsClient, request *
 
 	duration := time.Since(startTime)
 	p.log.WithFields(map[string]interface{}{
+		"id":       request.ID,
 		"method":   request.Method,
 		"params":   request.Params,
 		"duration": duration,

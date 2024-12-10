@@ -193,6 +193,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 							}
 
 							h.log.WithFields(map[string]interface{}{
+								"id":       request.ID,
 								"method":   request.Method,
 								"path":     request.Params,
 								"cache":    cacheHit,
@@ -215,6 +216,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 					}
 
 					h.log.WithFields(map[string]interface{}{
+						"id":       request.ID,
 						"method":   request.Method,
 						"params":   request.Params,
 						"cache":    cacheMiss,
@@ -235,6 +237,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 				}
 
 				h.log.WithFields(map[string]interface{}{
+					"id":       request.ID,
 					"method":   request.Method,
 					"params":   request.Params,
 					"duration": duration,
@@ -255,6 +258,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 				}
 
 				h.log.WithFields(map[string]interface{}{
+					"id":       request.ID,
 					"method":   request.Method,
 					"params":   request.Params,
 					"duration": duration,
@@ -281,6 +285,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 		}
 
 		h.log.WithFields(map[string]interface{}{
+			"id":       request.ID,
 			"method":   request.Method,
 			"params":   request.Params,
 			"duration": duration,
@@ -300,6 +305,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 		}
 
 		h.log.WithFields(map[string]interface{}{
+			"id":       request.ID,
 			"method":   request.Method,
 			"params":   request.Params,
 			"duration": duration,
@@ -340,18 +346,33 @@ func (h *JsonRpcHandler) handleHttpBatch(requests JsonRpcMsgs, w http.ResponseWr
 	responses := JsonRpcResponses{}
 
 	var cacheHits, cacheMisses, allowed, denied int
+	requestIDs := make([]interface{}, len(requests))
 
 	h.rulesMutex.RLock()
 RequestsLoop:
-	for _, req := range requests {
+	for i, req := range requests {
+		requestIDs[i] = req.ID
 		if h.rules == nil || len(h.rules) == 0 {
 			cacheMisses++
 			if h.defaultAction == RuleActionAllow {
 				responses.AddPending(req)
 				allowed++
+				h.log.WithFields(map[string]interface{}{
+					"id":     req.ID,
+					"method": req.Method,
+					"params": req.Params,
+					"cache":  cacheMiss,
+					"source": GetSourceIP(r),
+				}).Info("request in batch allowed")
 			} else {
 				responses.Deny(req)
 				denied++
+				h.log.WithFields(map[string]interface{}{
+					"id":     req.ID,
+					"method": req.Method,
+					"params": req.Params,
+					"source": GetSourceIP(r),
+				}).Info("request in batch denied")
 			}
 			continue RequestsLoop
 		}
@@ -361,10 +382,6 @@ RequestsLoop:
 				switch rule.Action {
 				case RuleActionAllow:
 					allowed++
-					h.log.WithFields(map[string]interface{}{
-						"method": req.Method,
-						"params": req.Params,
-					}).Debug("request allowed")
 
 					cached, err := h.cache.Has(r.Context(), req.Hash())
 					if err != nil {
@@ -379,6 +396,13 @@ RequestsLoop:
 						if err == nil {
 							cacheHits++
 							responses.AddResponse(req, res)
+							h.log.WithFields(map[string]interface{}{
+								"id":     req.ID,
+								"method": req.Method,
+								"params": req.Params,
+								"cache":  cacheHit,
+								"source": GetSourceIP(r),
+							}).Info("request in batch allowed")
 							continue RequestsLoop
 						}
 						h.log.Errorf("error loading response from cache: %v", err)
@@ -386,14 +410,23 @@ RequestsLoop:
 
 					cacheMisses++
 					responses.AddPendingWithCacheConfig(req, req.Hash(), rule.Cache)
+					h.log.WithFields(map[string]interface{}{
+						"id":     req.ID,
+						"method": req.Method,
+						"params": req.Params,
+						"cache":  cacheMiss,
+						"source": GetSourceIP(r),
+					}).Info("request in batch allowed")
 					continue RequestsLoop
 
 				case RuleActionDeny:
 					denied++
 					h.log.WithFields(map[string]interface{}{
+						"id":     req.ID,
 						"method": req.Method,
 						"params": req.Params,
-					}).Debug("request denied")
+						"source": GetSourceIP(r),
+					}).Info("request in batch denied")
 					responses.Deny(req)
 					continue RequestsLoop
 
@@ -406,6 +439,21 @@ RequestsLoop:
 		if h.defaultAction == RuleActionAllow {
 			responses.AddPending(req)
 			allowed++
+			h.log.WithFields(map[string]interface{}{
+				"id":     req.ID,
+				"method": req.Method,
+				"params": req.Params,
+				"source": GetSourceIP(r),
+			}).Info("request in batch allowed")
+		} else {
+			responses.Deny(req)
+			denied++
+			h.log.WithFields(map[string]interface{}{
+				"id":     req.ID,
+				"method": req.Method,
+				"params": req.Params,
+				"source": GetSourceIP(r),
+			}).Info("request in batch denied")
 		}
 	}
 	h.rulesMutex.RUnlock()
@@ -449,6 +497,7 @@ RequestsLoop:
 
 	h.log.WithFields(map[string]interface{}{
 		"requests":     len(requests),
+		"requests_id":  requestIDs,
 		"allowed":      allowed,
 		"denied":       denied,
 		"cache_hits":   cacheHits,
