@@ -246,6 +246,48 @@ func TestJsonRpcRule_Match(t *testing.T) {
 			},
 			ExpectMatch: false,
 		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{"eth_getBlockByNumber"},
+				Params:  []interface{}{"latest"},
+			},
+			Request: &JsonRpcMsg{
+				ID:      1234,
+				Version: "2.0",
+				Method:  "eth_getBlockByNumber",
+				Params:  []interface{}{"latest", false},
+			},
+			ExpectMatch: true,
+		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{"eth_getBlockByNumber"},
+				Params:  []interface{}{"latest"},
+			},
+			Request: &JsonRpcMsg{
+				ID:      1234,
+				Version: "2.0",
+				Method:  "eth_getBlockByNumber",
+				Params:  []interface{}{"latest", true},
+			},
+			ExpectMatch: true,
+		},
+		{
+			Rule: JsonRpcRule{
+				Action:  RuleActionAllow,
+				Methods: []string{"eth_getBlockByNumber"},
+				Params:  []interface{}{"latest"},
+			},
+			Request: &JsonRpcMsg{
+				ID:      1234,
+				Version: "2.0",
+				Method:  "eth_getBlockByNumber",
+				Params:  []interface{}{"0x49376"},
+			},
+			ExpectMatch: false,
+		},
 	}
 
 	for _, test := range table {
