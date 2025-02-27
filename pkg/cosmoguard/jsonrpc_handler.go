@@ -326,6 +326,22 @@ func (h *JsonRpcHandler) getSingleUpstreamResponse(w http.ResponseWriter, r *htt
 
 	res, _, _ := ParseJsonRpcMessage(b)
 
+	h.log.WithFields(map[string]interface{}{
+		"error":              res.Error != nil,
+		"empty-result":       res.Result == nil,
+		"cache-enabled":      cache.Enable,
+		"cache-ttl":          cache.TTL.String(),
+		"cache-error":        cache.CacheError,
+		"cache-empty-result": cache.CacheEmptyResult,
+	}).Debug("got response from upstream")
+
+	if res.Error != nil && !cache.CacheError {
+		return
+	}
+	if res.Result == nil && !cache.CacheEmptyResult {
+		return
+	}
+
 	if err = h.cache.Set(r.Context(), hash, res, cache.TTL); err != nil {
 		h.log.Errorf("error setting cache value: %v", err)
 	}

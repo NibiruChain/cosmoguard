@@ -65,7 +65,7 @@ func (w *ResponseWriterWrapper) Write(p []byte) (int, error) {
 	return w.multi.Write(p)
 }
 
-func (w *ResponseWriterWrapper) WriterHeader(statusCode int) {
+func (w *ResponseWriterWrapper) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
 	w.ResponseWriter.WriteHeader(statusCode)
 }

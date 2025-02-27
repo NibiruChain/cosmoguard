@@ -48,8 +48,10 @@ type CacheGlobalConfig struct {
 }
 
 type RuleCache struct {
-	Enable bool          `yaml:"enable,omitempty"`
-	TTL    time.Duration `yaml:"ttl,omitempty"`
+	Enable           bool          `yaml:"enable,omitempty"`
+	TTL              time.Duration `yaml:"ttl,omitempty"`
+	CacheError       bool          `yaml:"cacheError,omitempty"`
+	CacheEmptyResult bool          `yaml:"cacheEmptyResult,omitempty"`
 }
 
 type LcdConfig struct {

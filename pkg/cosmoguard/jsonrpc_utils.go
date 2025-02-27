@@ -38,7 +38,7 @@ type JsonRpcMsg struct {
 	ID      interface{}   `json:"id,omitempty"`
 	Method  string        `json:"method,omitempty"`
 	Params  interface{}   `json:"params,omitempty"`
-	Result  interface{}   `json:"result,omitempty"`
+	Result  interface{}   `json:"result"`
 	Error   *JsonRpcError `json:"error,omitempty"`
 }
 
@@ -257,6 +257,13 @@ func (l *JsonRpcResponses) Deny(request *JsonRpcMsg) {
 func (l *JsonRpcResponses) StoreInCache(cache cache.Cache[uint64, *JsonRpcMsg]) error {
 	for _, r := range *l {
 		if r.Response != nil && r.Cache != nil && r.Cache.Enable {
+			if r.Response.Error != nil && !r.Cache.CacheError {
+				continue
+			}
+			if r.Response.Result == nil && !r.Cache.CacheEmptyResult {
+				continue
+			}
+
 			if err := cache.Set(context.Background(), r.CacheKey, r.Response, r.Cache.TTL); err != nil {
 				return err
 			}

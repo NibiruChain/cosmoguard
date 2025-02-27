@@ -261,20 +261,33 @@ func (p *HttpProxy) cacheMiss(w http.ResponseWriter, r *http.Request, requestHas
 		"source":   GetSourceIP(r),
 	}).Info("request allowed")
 
+	if ww.GetStatusCode() <= 0 {
+		return
+	}
+
 	b, err := ww.GetWrittenBytes()
 	if err != nil {
 		p.log.Errorf("error loading upstream response: %v\n response not cached", err)
 		return
 	}
 
-	if ww.GetStatusCode() > 0 {
-		err = p.cache.Set(r.Context(), requestHash, CachedResponse{
-			Data:       b,
-			StatusCode: ww.GetStatusCode(),
-		}, cache.TTL)
-		if err != nil {
-			p.log.Errorf("error setting cache value: %v", err)
-		}
+	p.log.WithFields(map[string]interface{}{
+		"error":         ww.GetStatusCode() != http.StatusOK,
+		"cache-enabled": cache.Enable,
+		"cache-ttl":     cache.TTL.String(),
+		"cache-error":   cache.CacheError,
+	}).Debug("got response from upstream")
+
+	if ww.GetStatusCode() != http.StatusOK && !cache.CacheError {
+		return
+	}
+
+	err = p.cache.Set(r.Context(), requestHash, CachedResponse{
+		Data:       b,
+		StatusCode: ww.GetStatusCode(),
+	}, cache.TTL)
+	if err != nil {
+		p.log.Errorf("error setting cache value: %v", err)
 	}
 }
 
