@@ -9,7 +9,7 @@ import (
 )
 
 func testMemoryCache[K comparable, V any](t *testing.T, testItems []testCase[K, V]) {
-	cache, _ := NewMemoryCache[K, V]()
+	cache, _ := NewMemoryCache[K, V](DefaultNamespace)
 	for _, tc := range testItems {
 		err := cache.Set(context.TODO(), tc.Key, tc.Value, tc.TTL)
 		assert.NoError(t, err)
