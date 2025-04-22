@@ -10,11 +10,12 @@ import (
 )
 
 type RedisCache[K comparable, V any] struct {
-	client *redis.Client
-	cfg    *Options
+	client    *redis.Client
+	cfg       *Options
+	namespace string
 }
 
-func NewRedisCache[K comparable, V any](connectionString string, opts ...Option) (Cache[K, V], error) {
+func NewRedisCache[K comparable, V any](connectionString string, namespace string, opts ...Option) (Cache[K, V], error) {
 	options := defaultOptions()
 	for _, opt := range opts {
 		opt(options)
@@ -27,8 +28,9 @@ func NewRedisCache[K comparable, V any](connectionString string, opts ...Option)
 
 	client := redis.NewClient(opt)
 	return RedisCache[K, V]{
-		client: client,
-		cfg:    options,
+		client:    client,
+		cfg:       options,
+		namespace: namespace,
 	}, nil
 }
 
@@ -41,11 +43,11 @@ func (c RedisCache[K, V]) Set(ctx context.Context, key K, value V, ttl time.Dura
 	if err != nil {
 		return err
 	}
-	return c.client.Set(ctx, getRedisKey(key), v, itemTTL).Err()
+	return c.client.Set(ctx, c.getKey(key), v, itemTTL).Err()
 }
 
 func (c RedisCache[K, V]) Get(ctx context.Context, key K) (V, error) {
-	v, err := c.client.Get(ctx, getRedisKey(key)).Bytes()
+	v, err := c.client.Get(ctx, c.getKey(key)).Bytes()
 	if err != nil {
 		var result V
 		if errors.Is(err, redis.Nil) {
@@ -57,10 +59,10 @@ func (c RedisCache[K, V]) Get(ctx context.Context, key K) (V, error) {
 }
 
 func (c RedisCache[K, V]) Has(ctx context.Context, key K) (bool, error) {
-	n, err := c.client.Exists(ctx, getRedisKey(key)).Result()
+	n, err := c.client.Exists(ctx, c.getKey(key)).Result()
 	return n > 0, err
 }
 
-func getRedisKey[K comparable](key K) string {
-	return fmt.Sprintf("%v", key)
+func (c RedisCache[K, V]) getKey(key K) string {
+	return fmt.Sprintf("%s:%v", c.namespace, key)
 }
