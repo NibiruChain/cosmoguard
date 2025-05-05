@@ -73,12 +73,12 @@ func NewHttpProxy(name, localAddr, remoteAddr string, opts ...Option[HttpProxyOp
 	}
 
 	if cfg.CacheConfig != nil && cfg.CacheConfig.Redis != nil {
-		proxy.cache, err = cache.NewRedisCache[string, CachedResponse](*cfg.CacheConfig.Redis, cacheOptions...)
+		proxy.cache, err = cache.NewRedisCache[string, CachedResponse](*cfg.CacheConfig.Redis, name, cacheOptions...)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		proxy.cache, err = cache.NewMemoryCache[string, CachedResponse](cacheOptions...)
+		proxy.cache, err = cache.NewMemoryCache[string, CachedResponse](name, cacheOptions...)
 		if err != nil {
 			return nil, err
 		}

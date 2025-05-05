@@ -8,6 +8,10 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
+const (
+	DefaultNamespace = "default"
+)
+
 var (
 	ErrNotFound = errors.New("item not found in cache")
 )

@@ -48,12 +48,12 @@ func NewJsonRpcHandler(name string, opts ...Option[JsonRpcHandlerOptions]) (*Jso
 
 	var err error
 	if cfg.CacheConfig != nil && cfg.CacheConfig.Redis != nil {
-		handler.cache, err = cache.NewRedisCache[uint64, *JsonRpcMsg](*cfg.CacheConfig.Redis, cacheOptions...)
+		handler.cache, err = cache.NewRedisCache[uint64, *JsonRpcMsg](*cfg.CacheConfig.Redis, name, cacheOptions...)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		handler.cache, err = cache.NewMemoryCache[uint64, *JsonRpcMsg](cacheOptions...)
+		handler.cache, err = cache.NewMemoryCache[uint64, *JsonRpcMsg](name, cacheOptions...)
 		if err != nil {
 			return nil, err
 		}
