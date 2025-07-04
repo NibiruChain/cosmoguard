@@ -88,8 +88,9 @@ type EvmConfig struct {
 }
 
 type EvmRpcConfig struct {
-	Default RuleAction     `yaml:"default,omitempty" default:"deny"`
-	Rules   []*JsonRpcRule `yaml:"rules,omitempty"`
+	Default   RuleAction     `yaml:"default,omitempty" default:"deny"`
+	Rules     []*JsonRpcRule `yaml:"rules,omitempty"`
+	HttpRules []*HttpRule    `yaml:"httpRules,omitempty"`
 }
 
 type EvmRpcWsConfig struct {
@@ -150,6 +151,15 @@ func ReadConfigFromFile(path string) (*Config, error) {
 			return cfg.EVM.RPC.Rules[i].Priority < cfg.EVM.RPC.Rules[j].Priority
 		})
 		for _, rule := range cfg.EVM.RPC.Rules {
+			rule.Compile()
+		}
+	}
+
+	if cfg.EVM.RPC.HttpRules != nil {
+		sort.Slice(cfg.EVM.RPC.HttpRules, func(i, j int) bool {
+			return cfg.EVM.RPC.HttpRules[i].Priority < cfg.EVM.RPC.HttpRules[j].Priority
+		})
+		for _, rule := range cfg.EVM.RPC.HttpRules {
 			rule.Compile()
 		}
 	}

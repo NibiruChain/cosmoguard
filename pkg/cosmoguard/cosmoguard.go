@@ -264,11 +264,12 @@ func (f *CosmoGuard) applyRules() {
 
 	if f.cfg.EnableEvm {
 		// Rules for EVM RPC
-		log.WithField("default", f.cfg.RPC.Default).Debug("applying EVM-RPC cosmoguard rules")
+		log.WithField("default", f.cfg.EVM.RPC.Default).Debug("applying EVM-RPC cosmoguard rules")
+		f.evmRpcProxy.SetRules(f.cfg.EVM.RPC.HttpRules, f.cfg.EVM.RPC.Default)
 		f.evmJsonRpcHandler.SetRules(f.cfg.EVM.RPC.Rules, f.cfg.EVM.RPC.Default)
 
 		// Rules for EVM RPC WS
-		log.WithField("default", f.cfg.RPC.Default).Debug("applying EVM-RPC-WS cosmoguard rules")
+		log.WithField("default", f.cfg.EVM.WS.Default).Debug("applying EVM-RPC-WS cosmoguard rules")
 		f.evmJsonRpcWsHandler.SetRules(f.cfg.EVM.WS.Rules, f.cfg.EVM.WS.Default)
 	}
 }
