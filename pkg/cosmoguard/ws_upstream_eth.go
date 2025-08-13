@@ -89,6 +89,10 @@ func (u *UpstreamConnManagerEth) connect() error {
 func (u *UpstreamConnManagerEth) onUpstreamMessage(msg *JsonRpcMsg) {
 	// This is a subscription notification
 	if msg.ID == nil {
+		if msg.Params == nil {
+			u.log.Errorf("dropped message from upstream with no ID and no params")
+			return
+		}
 		params := msg.Params.(map[string]interface{})
 		sub, ok := params["subscription"]
 		if !ok {
