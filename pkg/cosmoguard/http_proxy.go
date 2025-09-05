@@ -218,7 +218,10 @@ func (p *HttpProxy) cacheHit(w http.ResponseWriter, r *http.Request, requestHash
 		return
 	}
 
-	WriteData(w, res.StatusCode, res.Data, cacheKey, cacheHit)
+	WriteData(w, res.StatusCode, res.Data,
+		cacheKey, cacheHit,
+		"Content-Type", "application/json",
+	)
 
 	duration := time.Since(startTime)
 	if p.responseTimeHist != nil {

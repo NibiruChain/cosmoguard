@@ -354,6 +354,10 @@ func (h *JsonRpcHandler) writeSingleResponse(w http.ResponseWriter, res *JsonRpc
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+	// set the proper content type before writing
+	w.Header().Set("Content-Type", "application/json")
+
 	w.Write(b)
 }
 
@@ -498,7 +502,8 @@ RequestsLoop:
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	WriteData(w, http.StatusOK, b)
+
+	WriteData(w, http.StatusOK, b, "Content-Type", "application/json")
 
 	duration := time.Since(startTime)
 	if h.batchResTimeHist != nil {
