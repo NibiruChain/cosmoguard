@@ -196,10 +196,12 @@ func (p *HttpProxy) allow(w http.ResponseWriter, r *http.Request, cache *RuleCac
 	}
 
 	p.log.WithFields(map[string]interface{}{
-		"path":     r.URL.Path,
-		"method":   r.Method,
-		"duration": duration,
-		"source":   GetSourceIP(r),
+		"path":       r.URL.Path,
+		"method":     r.Method,
+		"status":     ww.GetStatusCode(),
+		"duration":   duration,
+		"source":     GetSourceIP(r),
+		"user-agent": r.UserAgent(),
 	}).Info("request allowed")
 }
 
@@ -233,11 +235,13 @@ func (p *HttpProxy) cacheHit(w http.ResponseWriter, r *http.Request, requestHash
 	}
 
 	p.log.WithFields(map[string]interface{}{
-		"path":     r.URL.Path,
-		"method":   r.Method,
-		"cache":    cacheHit,
-		"duration": duration,
-		"source":   GetSourceIP(r),
+		"path":       r.URL.Path,
+		"method":     r.Method,
+		"cache":      cacheHit,
+		"duration":   duration,
+		"source":     GetSourceIP(r),
+		"status":     res.StatusCode,
+		"user-agent": r.UserAgent(),
 	}).Info("request allowed")
 }
 
@@ -257,11 +261,13 @@ func (p *HttpProxy) cacheMiss(w http.ResponseWriter, r *http.Request, requestHas
 	}
 
 	p.log.WithFields(map[string]interface{}{
-		"path":     r.URL.Path,
-		"method":   r.Method,
-		"cache":    cacheMiss,
-		"duration": duration,
-		"source":   GetSourceIP(r),
+		"path":       r.URL.Path,
+		"method":     r.Method,
+		"cache":      cacheMiss,
+		"duration":   duration,
+		"source":     GetSourceIP(r),
+		"status":     ww.GetStatusCode(),
+		"user-agent": r.UserAgent(),
 	}).Info("request allowed")
 
 	if ww.GetStatusCode() <= 0 {
@@ -307,9 +313,11 @@ func (p *HttpProxy) deny(w http.ResponseWriter, r *http.Request, startTime time.
 	}
 
 	p.log.WithFields(map[string]interface{}{
-		"path":     r.URL.Path,
-		"method":   r.Method,
-		"duration": duration,
-		"source":   GetSourceIP(r),
+		"path":       r.URL.Path,
+		"method":     r.Method,
+		"status":     http.StatusUnauthorized,
+		"duration":   duration,
+		"source":     GetSourceIP(r),
+		"user-agent": r.UserAgent(),
 	}).Info("request denied")
 }

@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -73,6 +74,11 @@ func (p *GrpcProxy) Handle(ctx context.Context, method string) (context.Context,
 	md, _ := metadata.FromIncomingContext(ctx)
 	outCtx := metadata.NewOutgoingContext(ctx, md.Copy())
 
+	var source string
+	if pr, ok := peer.FromContext(ctx); ok {
+		source = pr.Addr.String()
+	}
+
 	// Always forward internal services
 	if strings.HasPrefix(method, "/grpc.reflection") {
 		return outCtx, p.client, nil
@@ -85,11 +91,17 @@ func (p *GrpcProxy) Handle(ctx context.Context, method string) (context.Context,
 		if match {
 			switch rule.Action {
 			case RuleActionAllow:
-				p.log.WithField("method", method).Info("request allowed")
+				p.log.WithFields(map[string]interface{}{
+					"method": method,
+					"source": source,
+				}).Info("request allowed")
 				return ctx, p.client, nil
 
 			case RuleActionDeny:
-				p.log.WithField("method", method).Info("request denied")
+				p.log.WithFields(map[string]interface{}{
+					"method": method,
+					"source": source,
+				}).Info("request denied")
 				return ctx, nil, status.Errorf(codes.Unavailable, "Unauthorized")
 
 			default:
@@ -99,9 +111,15 @@ func (p *GrpcProxy) Handle(ctx context.Context, method string) (context.Context,
 	}
 
 	if p.defaultAction == RuleActionAllow {
-		p.log.WithField("method", method).Info("request allowed")
+		p.log.WithFields(map[string]interface{}{
+			"method": method,
+			"source": source,
+		}).Info("request allowed")
 		return ctx, p.client, nil
 	}
-	p.log.WithField("method", method).Info("request denied")
+	p.log.WithFields(map[string]interface{}{
+		"method": method,
+		"source": source,
+	}).Info("request denied")
 	return ctx, nil, status.Errorf(codes.Unavailable, "Unauthorized")
 }
