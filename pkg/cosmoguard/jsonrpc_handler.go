@@ -195,7 +195,7 @@ func (h *JsonRpcHandler) handleHttpSingle(request *JsonRpcMsg, w http.ResponseWr
 							h.log.WithFields(map[string]interface{}{
 								"id":       request.ID,
 								"method":   request.Method,
-								"path":     request.Params,
+								"params":   request.Params,
 								"cache":    cacheHit,
 								"duration": duration,
 								"source":   GetSourceIP(r),
