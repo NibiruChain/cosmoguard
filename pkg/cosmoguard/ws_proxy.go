@@ -186,10 +186,18 @@ func (p *JsonRpcWebSocketProxy) handleRequest(client *JsonRpcWsClient, request *
 					).Observe(duration.Seconds())
 				}
 
-				if rule.Cache != nil {
-					if err = p.cache.Set(context.Background(), hash, res, rule.Cache.TTL); err != nil {
-						p.log.Errorf("error setting cache value: %v", err)
-					}
+				if rule.Cache == nil {
+					return nil
+				}
+
+				if res.Error != nil && !rule.Cache.CacheError {
+					return nil
+				}
+				if res.Result == nil && !rule.Cache.CacheEmptyResult {
+					return nil
+				}
+				if err = p.cache.Set(context.Background(), hash, res, rule.Cache.TTL); err != nil {
+					return fmt.Errorf("error storing in cache: %v", err)
 				}
 				return nil
 
