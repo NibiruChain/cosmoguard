@@ -47,8 +47,15 @@ func NewJsonRpcHandler(name string, opts ...Option[JsonRpcHandlerOptions]) (*Jso
 	}
 
 	var err error
-	if cfg.CacheConfig != nil && cfg.CacheConfig.Redis != nil {
-		handler.cache, err = cache.NewRedisCache[uint64, *JsonRpcMsg](*cfg.CacheConfig.Redis, name, cacheOptions...)
+	if cfg.CacheConfig != nil && (cfg.CacheConfig.Redis != nil || cfg.CacheConfig.RedisSentinel != nil) {
+		var sentinel *cache.RedisSentinel
+		if cfg.CacheConfig.RedisSentinel != nil {
+			sentinel = &cache.RedisSentinel{
+				MasterName: cfg.CacheConfig.RedisSentinel.MasterName,
+				Addrs:      cfg.CacheConfig.RedisSentinel.SentinelAddrs,
+			}
+		}
+		handler.cache, err = cache.NewRedisCache[uint64, *JsonRpcMsg](cfg.CacheConfig.Redis, sentinel, name, cacheOptions...)
 		if err != nil {
 			return nil, err
 		}

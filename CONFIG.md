@@ -28,6 +28,8 @@ Most fields are optional and default to specified values.
 | **Caching Settings**               |                   |                                                                               |
 | `cache.ttl`                        | `5s`              | Global time-to-live for cached responses.                                     |
 | `cache.redis`                      | (In-memory cache) | Connection URL for Redis if used for caching.                                 |
+| `cache.redis-sentinel.master_name` |                   | The master name for Redis Sentinel.                                           |
+| `cache.redis-sentinel.sentinel_addrs`|                   | A list of sentinel addresses for Redis Sentinel.                              |
 | **Metrics Settings**               |                   |                                                                               |
 | `metrics.enable`                   | `true`            | Enable or disable metrics collection.                                         |
 | `metrics.port`                     | `9001`            | Port for metrics.                                                             |

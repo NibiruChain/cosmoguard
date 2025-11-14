@@ -12,7 +12,8 @@ import (
 
 func testRedisCache[K comparable, V any](t *testing.T, testItems []testCase[K, V]) {
 	s := miniredis.RunT(t)
-	cache, _ := NewRedisCache[K, V](fmt.Sprintf("redis://@%s", s.Addr()), DefaultNamespace)
+	connectionString := fmt.Sprintf("redis://@%s", s.Addr())
+	cache, _ := NewRedisCache[K, V](&connectionString, nil, DefaultNamespace)
 	for _, tc := range testItems {
 		err := cache.Set(context.Background(), tc.Key, tc.Value, tc.TTL)
 		assert.NoError(t, err)
