@@ -43,8 +43,14 @@ type NodeConfig struct {
 }
 
 type CacheGlobalConfig struct {
-	TTL   time.Duration `yaml:"ttl,omitempty" default:"5s"`
-	Redis *string       `yaml:"redis,omitempty"`
+	TTL           time.Duration      `yaml:"ttl,omitempty" default:"5s"`
+	Redis         *string            `yaml:"redis,omitempty"`
+	RedisSentinel *RedisSentinelConfig `yaml:"redis-sentinel,omitempty"`
+}
+
+type RedisSentinelConfig struct {
+	MasterName    string   `yaml:"master_name,omitempty"`
+	SentinelAddrs []string `yaml:"sentinel_addrs,omitempty"`
 }
 
 type RuleCache struct {

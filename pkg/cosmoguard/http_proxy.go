@@ -72,8 +72,15 @@ func NewHttpProxy(name, localAddr, remoteAddr string, opts ...Option[HttpProxyOp
 		cacheOptions = append(cacheOptions, cache.DefaultTTL(cfg.CacheConfig.TTL))
 	}
 
-	if cfg.CacheConfig != nil && cfg.CacheConfig.Redis != nil {
-		proxy.cache, err = cache.NewRedisCache[string, CachedResponse](*cfg.CacheConfig.Redis, name, cacheOptions...)
+	if cfg.CacheConfig != nil && (cfg.CacheConfig.Redis != nil || cfg.CacheConfig.RedisSentinel != nil) {
+		var sentinel *cache.RedisSentinel
+		if cfg.CacheConfig.RedisSentinel != nil {
+			sentinel = &cache.RedisSentinel{
+				MasterName: cfg.CacheConfig.RedisSentinel.MasterName,
+				Addrs:      cfg.CacheConfig.RedisSentinel.SentinelAddrs,
+			}
+		}
+		proxy.cache, err = cache.NewRedisCache[string, CachedResponse](cfg.CacheConfig.Redis, sentinel, name, cacheOptions...)
 		if err != nil {
 			return nil, err
 		}

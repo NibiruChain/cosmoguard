@@ -9,24 +9,44 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type RedisSentinel struct {
+	MasterName string
+	Addrs      []string
+}
+
 type RedisCache[K comparable, V any] struct {
 	client    *redis.Client
 	cfg       *Options
 	namespace string
 }
 
-func NewRedisCache[K comparable, V any](connectionString string, namespace string, opts ...Option) (Cache[K, V], error) {
+func NewRedisCache[K comparable, V any](
+	connectionString *string,
+	sentinel *RedisSentinel,
+	namespace string,
+	opts ...Option,
+) (Cache[K, V], error) {
 	options := defaultOptions()
 	for _, opt := range opts {
 		opt(options)
 	}
 
-	opt, err := redis.ParseURL(connectionString)
-	if err != nil {
-		return nil, err
+	var client *redis.Client
+	if sentinel != nil && sentinel.MasterName != "" && len(sentinel.Addrs) > 0 {
+		client = redis.NewFailoverClient(&redis.FailoverOptions{
+			MasterName:    sentinel.MasterName,
+			SentinelAddrs: sentinel.Addrs,
+		})
+	} else if connectionString != nil {
+		opt, err := redis.ParseURL(*connectionString)
+		if err != nil {
+			return nil, err
+		}
+		client = redis.NewClient(opt)
+	} else {
+		return nil, errors.New("either connectionString or sentinel configuration must be provided")
 	}
 
-	client := redis.NewClient(opt)
 	return RedisCache[K, V]{
 		client:    client,
 		cfg:       options,
