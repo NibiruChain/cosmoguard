@@ -8,51 +8,52 @@ Most fields are optional and default to specified values.
 
 ## Configuration Options
 
-| Option                             | Default Value     | Description                                                                   |
-|------------------------------------|-------------------|-------------------------------------------------------------------------------|
-| **Global Settings**                |                   |                                                                               |
-| `host`                             | `0.0.0.0`         | The host address the CosmoGuard listens on.                                   |
-| `rpcPort`                          | `16657`           | Port for Tendermint RPC.                                                      |
-| `lcdPort`                          | `11317`           | Port for Cosmos REST API (LCD).                                               |
-| `grpcPort`                         | `19090`           | Port for gRPC.                                                                |
-| `enableEvm`                        | `false`           | Enable or disable EVM support.                                                |
-| `evmRpcPort`                       | `18545`           | Port for EVM JSON-RPC.                                                        |
-| `evmRpcWsPort`                     | `18546`           | Port for EVM WebSocket.                                                       |
-| **Node Settings**                  |                   |                                                                               |
-| `node.host`                        | `127.0.0.1`       | The node's host address.                                                      |
-| `node.rpcPort`                     | `26657`           | Port for the node's Tendermint RPC.                                           |
-| `node.lcdPort`                     | `1317`            | Port for the node's LCD.                                                      |
-| `node.grpcPort`                    | `9090`            | Port for the node's gRPC.                                                     |
-| `node.evmRpcPort`                  | `8545`            | Port for the node's EVM JSON-RPC.                                             |
-| `node.evmRpcWsPort`                | `8546`            | Port for the node's EVM WebSocket.                                            |
-| **Caching Settings**               |                   |                                                                               |
-| `cache.ttl`                        | `5s`              | Global time-to-live for cached responses.                                     |
-| `cache.redis`                      | (In-memory cache) | Connection URL for Redis if used for caching.                                 |
-| `cache.redis-sentinel.master_name` |                   | The master name for Redis Sentinel.                                           |
-| `cache.redis-sentinel.sentinel_addrs`|                   | A list of sentinel addresses for Redis Sentinel.                              |
-| **Metrics Settings**               |                   |                                                                               |
-| `metrics.enable`                   | `true`            | Enable or disable metrics collection.                                         |
-| `metrics.port`                     | `9001`            | Port for metrics.                                                             |
-| **LCD (REST API) Settings**        |                   |                                                                               |
-| `lcd.default`                      | `deny`            | Default action for LCD requests.                                              |
-| `lcd.rules`                        | (Empty)           | List of [HTTP Rules](#http-rule) for handling LCD requests.                   |
-| **gRPC Settings**                  |                   |                                                                               |
-| `grpc.default`                     | `deny`            | Default action for gRPC requests.                                             |
-| `grpc.rules`                       | (Empty)           | List of [gRPC Rules](#grpc-rule) for handling gRPC requests.                  |
-| **RPC Settings**                   |                   |                                                                               |
-| `rpc.default`                      | `deny`            | Default action for RPC requests.                                              |
-| `rpc.rules`                        | (Empty)           | List of [HTTP Rules](#http-rule) for handling RPC requests.                   |
-| **JSON-RPC Settings**              |                   |                                                                               |
-| `rpc.jsonrpc.default`              | `deny`            | Default action for JSON-RPC requests.                                         |
-| `rpc.jsonrpc.webSocketEnabled`     | `true`            | Enable or disable WebSocket support.                                          |
-| `rpc.jsonrpc.webSocketConnections` | `10`              | Maximum number of WebSocket connections.                                      |
-| `rpc.jsonrpc.rules`                | (Empty)           | List of [JSON-RPC Rules](#json-rpc-rule) for handling JSON-RPC requests.      |
-| **EVM Settings**                   |                   |                                                                               |
-| `evm.rpc.default`                  | `deny`            | Default action for EVM RPC requests.                                          |
-| `evm.rpc.rules`                    | (Empty)           | List of [JSON-RPC Rules](#json-rpc-rule) for handling EVM RPC requests.       |
-| `evm.ws.default`                   | `deny`            | Default action for EVM WebSocket requests.                                    |
-| `evm.ws.webSocketConnections`      | `10`              | Maximum number of WebSocket connections.                                      |
-| `evm.ws.rules`                     | (Empty)           | List of [JSON-RPC Rules](#json-rpc-rule) for handling EVM WebSocket requests. |
+| Option                                | Default Value     | Description                                                                                                         |
+|---------------------------------------|-------------------|---------------------------------------------------------------------------------------------------------------------|
+| **Global Settings**                   |                   |                                                                                                                     |
+| `host`                                | `0.0.0.0`         | The host address the CosmoGuard listens on.                                                                         |
+| `rpcPort`                             | `16657`           | Port for Tendermint RPC.                                                                                            |
+| `lcdPort`                             | `11317`           | Port for Cosmos REST API (LCD).                                                                                     |
+| `grpcPort`                            | `19090`           | Port for gRPC.                                                                                                      |
+| `enableEvm`                           | `false`           | Enable or disable EVM support.                                                                                      |
+| `evmRpcPort`                          | `18545`           | Port for EVM JSON-RPC.                                                                                              |
+| `evmRpcWsPort`                        | `18546`           | Port for EVM WebSocket.                                                                                             |
+| **Node Settings**                     |                   |                                                                                                                     |
+| `node.host`                           | `127.0.0.1`       | The node's host address.                                                                                            |
+| `node.rpcPort`                        | `26657`           | Port for the node's Tendermint RPC.                                                                                 |
+| `node.lcdPort`                        | `1317`            | Port for the node's LCD.                                                                                            |
+| `node.grpcPort`                       | `9090`            | Port for the node's gRPC.                                                                                           |
+| `node.evmRpcPort`                     | `8545`            | Port for the node's EVM JSON-RPC.                                                                                   |
+| `node.evmRpcWsPort`                   | `8546`            | Port for the node's EVM WebSocket.                                                                                  |
+| **Caching Settings**                  |                   |                                                                                                                     |
+| `cache.ttl`                           | `5s`              | Global time-to-live for cached responses.                                                                           |
+| `cache.redis`                         | (In-memory cache) | Connection URL for Redis if used for caching.                                                                       |
+| `cache.redis-sentinel.master_name`    |                   | The master name for Redis Sentinel.                                                                                 |
+| `cache.redis-sentinel.sentinel_addrs` |                   | A list of sentinel addresses for Redis Sentinel.                                                                    |
+| `cache.key`                           |                   | Optional key prefix for cache. Useful for splitting different caches in same database. Not used on in-memory cache. |
+| **Metrics Settings**                  |                   |                                                                                                                     |
+| `metrics.enable`                      | `true`            | Enable or disable metrics collection.                                                                               |
+| `metrics.port`                        | `9001`            | Port for metrics.                                                                                                   |
+| **LCD (REST API) Settings**           |                   |                                                                                                                     |
+| `lcd.default`                         | `deny`            | Default action for LCD requests.                                                                                    |
+| `lcd.rules`                           | (Empty)           | List of [HTTP Rules](#http-rule) for handling LCD requests.                                                         |
+| **gRPC Settings**                     |                   |                                                                                                                     |
+| `grpc.default`                        | `deny`            | Default action for gRPC requests.                                                                                   |
+| `grpc.rules`                          | (Empty)           | List of [gRPC Rules](#grpc-rule) for handling gRPC requests.                                                        |
+| **RPC Settings**                      |                   |                                                                                                                     |
+| `rpc.default`                         | `deny`            | Default action for RPC requests.                                                                                    |
+| `rpc.rules`                           | (Empty)           | List of [HTTP Rules](#http-rule) for handling RPC requests.                                                         |
+| **JSON-RPC Settings**                 |                   |                                                                                                                     |
+| `rpc.jsonrpc.default`                 | `deny`            | Default action for JSON-RPC requests.                                                                               |
+| `rpc.jsonrpc.webSocketEnabled`        | `true`            | Enable or disable WebSocket support.                                                                                |
+| `rpc.jsonrpc.webSocketConnections`    | `10`              | Maximum number of WebSocket connections.                                                                            |
+| `rpc.jsonrpc.rules`                   | (Empty)           | List of [JSON-RPC Rules](#json-rpc-rule) for handling JSON-RPC requests.                                            |
+| **EVM Settings**                      |                   |                                                                                                                     |
+| `evm.rpc.default`                     | `deny`            | Default action for EVM RPC requests.                                                                                |
+| `evm.rpc.rules`                       | (Empty)           | List of [JSON-RPC Rules](#json-rpc-rule) for handling EVM RPC requests.                                             |
+| `evm.ws.default`                      | `deny`            | Default action for EVM WebSocket requests.                                                                          |
+| `evm.ws.webSocketConnections`         | `10`              | Maximum number of WebSocket connections.                                                                            |
+| `evm.ws.rules`                        | (Empty)           | List of [JSON-RPC Rules](#json-rpc-rule) for handling EVM WebSocket requests.                                       |
 
 ## Rules
 

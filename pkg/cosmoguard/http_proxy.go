@@ -80,7 +80,7 @@ func NewHttpProxy(name, localAddr, remoteAddr string, opts ...Option[HttpProxyOp
 				Addrs:      cfg.CacheConfig.RedisSentinel.SentinelAddrs,
 			}
 		}
-		proxy.cache, err = cache.NewRedisCache[string, CachedResponse](cfg.CacheConfig.Redis, sentinel, name, cacheOptions...)
+		proxy.cache, err = cache.NewRedisCache[string, CachedResponse](cfg.CacheConfig.Redis, sentinel, cfg.CacheConfig.Key+name, cacheOptions...)
 		if err != nil {
 			return nil, err
 		}

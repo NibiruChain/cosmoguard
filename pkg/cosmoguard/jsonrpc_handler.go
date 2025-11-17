@@ -55,7 +55,7 @@ func NewJsonRpcHandler(name string, opts ...Option[JsonRpcHandlerOptions]) (*Jso
 				Addrs:      cfg.CacheConfig.RedisSentinel.SentinelAddrs,
 			}
 		}
-		handler.cache, err = cache.NewRedisCache[uint64, *JsonRpcMsg](cfg.CacheConfig.Redis, sentinel, name, cacheOptions...)
+		handler.cache, err = cache.NewRedisCache[uint64, *JsonRpcMsg](cfg.CacheConfig.Redis, sentinel, cfg.CacheConfig.Key+name, cacheOptions...)
 		if err != nil {
 			return nil, err
 		}
