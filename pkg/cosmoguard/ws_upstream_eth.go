@@ -139,6 +139,11 @@ func (u *UpstreamConnManagerEth) onUpstreamMessage(msg *JsonRpcMsg) {
 func (u *UpstreamConnManagerEth) makeRequestWithID(id string, req *JsonRpcMsg) (*JsonRpcMsg, error) {
 	request := req.CloneWithID(id)
 
+	// Check if client is connected before attempting to send
+	if u.client == nil || u.client.IsClosed() {
+		return nil, ErrClosed
+	}
+
 	u.respMux.Lock()
 	u.respMap[id] = make(chan *JsonRpcMsg)
 	u.respMux.Unlock()

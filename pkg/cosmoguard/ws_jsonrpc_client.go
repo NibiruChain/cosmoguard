@@ -53,6 +53,9 @@ func (c *JsonRpcWsClient) setClosed() {
 }
 
 func (c *JsonRpcWsClient) IsClosed() bool {
+	if c == nil {
+		return true
+	}
 	c.closedMux.RLock()
 	defer c.closedMux.RUnlock()
 	return c.closed
